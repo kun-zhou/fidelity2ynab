@@ -4,426 +4,95 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Fidelity Transaction Scraper</title>
-    <style>
-      html {
-        overflow: hidden;
-      }
-
-      body {
-        width: 600px;
-        height: 600px;
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-          Oxygen, Ubuntu, Cantarell, sans-serif;
-        margin: 0;
-        padding: 16px;
-        background: #f5f5f5;
-        overflow: hidden;
-        display: flex;
-        flex-direction: column;
-        box-sizing: border-box;
-      }
-
-      * {
-        box-sizing: border-box;
-      }
-
-      h1 {
-        font-size: 16px;
-        margin: 0;
-        color: #333;
-        font-weight: 600;
-      }
-
-      .settings {
-        background: #f8f9fa;
-        padding: 10px 12px;
-        border-radius: 4px;
-        margin-bottom: 12px;
-        border: 1px solid #e0e0e0;
-      }
-
-      .settings label {
-        cursor: pointer;
-        white-space: nowrap;
-      }
-
-      .settings input[type="checkbox"] {
-        cursor: pointer;
-        width: 16px;
-        height: 16px;
-        margin: 0;
-      }
-
-      .settings input[type="number"] {
-        text-align: center;
-      }
-
-      button {
-        padding: 8px 16px;
-        border: none;
-        border-radius: 4px;
-        background: #0066cc;
-        color: white;
-        font-size: 14px;
-        cursor: pointer;
-        transition: background 0.2s;
-      }
-
-      button:hover {
-        background: #0052a3;
-      }
-
-      button:disabled {
-        background: #cccccc;
-        cursor: not-allowed;
-      }
-
-      .status {
-        padding: 8px 12px;
-        margin-bottom: 16px;
-        border-radius: 4px;
-        font-size: 14px;
-      }
-
-      .status.success {
-        background: #d4edda;
-        color: #155724;
-        border: 1px solid #c3e6cb;
-      }
-
-      .status.error {
-        background: #f8d7da;
-        color: #721c24;
-        border: 1px solid #f5c6cb;
-      }
-
-      .status.info {
-        background: #d1ecf1;
-        color: #0c5460;
-        border: 1px solid #bee5eb;
-      }
-
-      .results {
-        background: white;
-        border-radius: 4px;
-        padding: 12px;
-        overflow-y: auto;
-        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-        flex: 1;
-        min-height: 0;
-      }
-
-      .transaction {
-        padding: 12px;
-        margin-bottom: 8px;
-        border: 1px solid #e0e0e0;
-        border-radius: 4px;
-        font-size: 13px;
-      }
-
-      .transaction:last-child {
-        margin-bottom: 0;
-      }
-
-      .transaction-header {
-        display: flex;
-        justify-content: space-between;
-        margin-bottom: 8px;
-        font-weight: 600;
-      }
-
-      .transaction-date {
-        color: #666;
-      }
-
-      .transaction-amount {
-        font-size: 14px;
-      }
-
-      .transaction-amount.credit {
-        color: #368727;
-      }
-
-      .transaction-amount.debit {
-        color: #000;
-      }
-
-      .transaction-description {
-        color: #333;
-        margin-bottom: 4px;
-      }
-
-      .transaction-balance {
-        color: #666;
-        font-size: 12px;
-      }
-
-      .transaction-status {
-        color: #ff9800;
-        font-style: italic;
-        font-size: 12px;
-      }
-
-      .transaction-match {
-        color: #0066cc;
-        font-size: 12px;
-        margin-top: 4px;
-        padding: 4px 8px;
-        background: #e3f2fd;
-        border-radius: 3px;
-      }
-
-      .empty-state {
-        text-align: center;
-        padding: 40px;
-        color: #666;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-      }
-
-      .empty-state p {
-        margin: 0;
-      }
-
-      pre {
-        background: #f8f8f8;
-        padding: 12px;
-        border-radius: 4px;
-        overflow-x: auto;
-        font-size: 12px;
-        line-height: 1.4;
-      }
-
-      /* Modal Styles */
-      .modal {
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background: rgba(0, 0, 0, 0.5);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        z-index: 1000;
-      }
-
-      .modal-content {
-        background: white;
-        padding: 24px;
-        border-radius: 8px;
-        width: 90%;
-        max-width: 500px;
-        max-height: 80%;
-        overflow-y: auto;
-      }
-
-      .modal-content h2 {
-        margin: 0 0 20px 0;
-        font-size: 18px;
-        color: #333;
-      }
-
-      .form-group {
-        margin-bottom: 16px;
-      }
-
-      .form-group label {
-        display: block;
-        margin-bottom: 4px;
-        font-size: 14px;
-        font-weight: 500;
-        color: #333;
-      }
-
-      .form-group input,
-      .form-group select {
-        width: 100%;
-        padding: 8px;
-        border: 1px solid #ddd;
-        border-radius: 4px;
-        font-size: 14px;
-        box-sizing: border-box;
-      }
-
-      .form-group input:focus,
-      .form-group select:focus {
-        outline: none;
-        border-color: #0066cc;
-      }
-
-      .help-link {
-        display: inline-block;
-        margin-top: 4px;
-        font-size: 12px;
-        color: #0066cc;
-        text-decoration: none;
-      }
-
-      .help-link:hover {
-        text-decoration: underline;
-      }
-
-      .modal-actions {
-        display: flex;
-        gap: 8px;
-        justify-content: flex-end;
-        margin-top: 20px;
-      }
-
-      button.primary {
-        background: #0066cc;
-      }
-
-      button.primary:hover {
-        background: #0052a3;
-      }
-
-      /* Transaction Preview */
-      .transaction.new {
-        border-left: 4px solid #4caf50;
-        background: #f1f8f4;
-      }
-
-      .transaction.clear {
-        border-left: 4px solid #ff9800;
-        background: #fff8f0;
-      }
-
-      .transaction.duplicate {
-        opacity: 0.6;
-        border-left: 4px solid #999;
-      }
-
-      .transaction-badge {
-        display: inline-block;
-        padding: 2px 8px;
-        border-radius: 12px;
-        font-size: 11px;
-        font-weight: 600;
-        margin-left: 8px;
-      }
-
-      .badge-new {
-        background: #4caf50;
-        color: white;
-      }
-
-      .badge-clear {
-        background: #ff9800;
-        color: white;
-      }
-
-      .badge-cleared {
-        background: #999;
-        color: white;
-      }
-
-      .badge-cutoff {
-        background: #ccc;
-        color: #666;
-      }
-
-      .ynab-status {
-        background: #f0f0f0;
-        border-radius: 4px;
-        display: flex;
-        align-items: center;
-        border: 1px solid #ddd;
-      }
-
-      .ynab-status.configured {
-        background: #d4edda;
-        color: #155724;
-        border-color: #c3e6cb;
-      }
-
-      .import-summary {
-        background: #fff3cd;
-        border: 1px solid #ffc107;
-        padding: 12px;
-        border-radius: 4px;
-        margin-bottom: 12px;
-        font-size: 13px;
-      }
-
-      .import-summary strong {
-        color: #856404;
-      }
-    </style>
+    <link rel="stylesheet" href="tailwind.css" />
   </head>
-  <body>
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-      <h1 style="margin: 0;">Fidelity Transaction Scraper</h1>
-      <div id="ynabStatus" class="ynab-status" style="display: none; margin: 0; padding: 8px 12px; font-size: 12px;">
-        <span id="ynabStatusText">YNAB: Not Configured</span>
-        <button id="configureYnabBtn" style="padding: 4px 8px; font-size: 12px; margin-left: 8px;">Configure</button>
+  <body class="flex flex-col bg-gray-50">
+    <!-- Settings -->
+    <div class="m-3 mb-2">
+      <div class="px-4 py-3 bg-white shadow-lg rounded-lg">
+        <div class="flex gap-4 items-center justify-between text-sm">
+          <div class="flex gap-3 items-center">
+            <span class="text-gray-500 text-xs">Options:</span>
+            <label class="flex items-center gap-1.5 cursor-pointer">
+              <div class="relative">
+                <input type="checkbox" id="skipCoreFunds" checked class="sr-only peer" />
+                <div class="w-9 h-5 bg-gray-300 rounded-full peer peer-checked:bg-blue-600 peer-focus:ring-2 peer-focus:ring-blue-500 transition-colors"></div>
+                <div class="absolute left-0.5 top-0.5 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-4"></div>
+              </div>
+              <span class="text-gray-600 text-xs">Skip Core Funds</span>
+            </label>
+            <label class="flex items-center gap-1.5 cursor-pointer">
+              <div class="relative">
+                <input type="checkbox" id="hideCleared" checked class="sr-only peer" />
+                <div class="w-9 h-5 bg-gray-300 rounded-full peer peer-checked:bg-blue-600 peer-focus:ring-2 peer-focus:ring-blue-500 transition-colors"></div>
+                <div class="absolute left-0.5 top-0.5 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-4"></div>
+              </div>
+              <span class="text-gray-600 text-xs">Hide Cleared</span>
+            </label>
+          </div>
+          <button id="scrapeBtn" class="px-4 py-2 text-sm text-gray-700 bg-white border border-gray-300 rounded hover:bg-gray-50">
+            Scrape Transactions
+          </button>
+        </div>
       </div>
     </div>
 
+    <!-- Toast Container -->
+    <div id="toastContainer" class="fixed inset-0 z-50 pointer-events-none flex flex-col items-center justify-end p-4 gap-2"></div>
 
-    <div class="settings">
-      <div style="display: flex; gap: 16px; align-items: center; flex-wrap: wrap;">
-        <label style="display: flex; align-items: center; gap: 6px; margin: 0;">
-          <input type="checkbox" id="skipCoreFunds" checked />
-          <span style="font-size: 13px;">Skip Core Funds</span>
-        </label>
-        <label style="display: flex; align-items: center; gap: 6px; margin: 0;">
-          <input type="checkbox" id="hideCleared" checked />
-          <span style="font-size: 13px;">Hide Cleared</span>
-        </label>
-        <label style="display: flex; align-items: center; gap: 6px; margin: 0;">
-          <span style="font-size: 13px;">Tolerance:</span>
-          <input type="number" id="dateTolerance" min="0" max="14" value="5" style="width: 50px; padding: 4px 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px;" />
-          <span style="font-size: 12px; color: #666;">days</span>
-        </label>
+    <!-- Results Container -->
+    <div class="flex-1 overflow-y-auto px-3 pb-4 min-h-0">
+      <div id="results">
+        <div id="instructions" class="text-sm text-gray-600">
+          <div class="mb-2">To get started:</div>
+          <ol class="list-decimal list-inside ml-2">
+            <li>Navigate to the Activity & Orders page for the intended Fidelity account</li>
+            <li>Click "Scrape Transactions"</li>
+          </ol>
+        </div>
       </div>
     </div>
 
-    <div id="status" style="display: none"></div>
-
-    <div class="results">
-      <div class="empty-state">
-        <p style="margin-bottom: 16px;">Click "Scrape Transactions" to extract data from the current page</p>
-        <button id="scrapeBtn">Scrape Transactions</button>
+    <!-- YNAB Status Bar -->
+    <div class="px-4 py-2 bg-white border-t border-gray-200">
+      <div id="ynabStatus" class="flex items-center justify-between gap-2">
+        <span id="ynabStatusText" class="text-xs text-gray-500">Not Connected</span>
+        <button id="configureYnabBtn" class="px-2 py-1 text-xs text-gray-600 hover:text-gray-800">
+          Configure
+        </button>
       </div>
     </div>
 
     <!-- YNAB Configuration Modal -->
-    <div id="ynabModal" class="modal" style="display: none">
-      <div class="modal-content">
-        <h2>YNAB Configuration</h2>
-        <div class="form-group">
-          <label for="ynabToken">Personal Access Token:</label>
-          <input
-            type="password"
-            id="ynabToken"
-            placeholder="Enter your YNAB PAT"
-          />
-          <a
-            href="https://app.ynab.com/settings/developer"
-            target="_blank"
-            class="help-link"
-            >Get your PAT</a
-          >
+    <div id="ynabModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" style="display: none">
+      <div class="bg-white rounded-lg shadow-lg w-11/12 max-w-lg max-h-4/5 overflow-y-auto">
+        <div class="border-b border-gray-200 px-4 py-3">
+          <h2 class="text-lg font-semibold text-gray-900">YNAB Configuration</h2>
         </div>
-        <div class="form-group">
-          <label for="ynabBudget">Budget:</label>
-          <select id="ynabBudget" disabled>
-            <option value="">Enter PAT first...</option>
-          </select>
+        <div class="p-4 space-y-4">
+          <div>
+            <label for="ynabToken" class="block text-sm font-medium text-gray-700 mb-1">Personal Access Token:</label>
+            <input type="password" id="ynabToken" placeholder="Enter your YNAB PAT" class="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            <a href="https://app.ynab.com/settings/developer" target="_blank" class="text-xs text-blue-600 hover:underline">Get your PAT</a>
+          </div>
+          <div>
+            <label for="ynabBudget" class="block text-sm font-medium text-gray-700 mb-1">Budget:</label>
+            <select id="ynabBudget" disabled class="w-full px-3 py-2 border border-gray-300 rounded bg-gray-100">
+              <option value="">Enter PAT first...</option>
+            </select>
+          </div>
+          <div>
+            <label for="ynabAccount" class="block text-sm font-medium text-gray-700 mb-1">Fidelity Account:</label>
+            <select id="ynabAccount" disabled class="w-full px-3 py-2 border border-gray-300 rounded bg-gray-100">
+              <option value="">Select budget first...</option>
+            </select>
+          </div>
         </div>
-        <div class="form-group">
-          <label for="ynabAccount">Fidelity Account:</label>
-          <select id="ynabAccount" disabled>
-            <option value="">Select budget first...</option>
-          </select>
-        </div>
-        <div class="modal-actions">
-          <button id="cancelYnabConfig">Cancel</button>
-          <button id="saveYnabConfig" class="primary">
+        <div class="border-t border-gray-200 px-4 py-3 flex justify-end gap-2">
+          <button id="cancelYnabConfig" class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded hover:bg-gray-50">
+            Cancel
+          </button>
+          <button id="saveYnabConfig" class="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded hover:bg-blue-700">
             Save Configuration
           </button>
         </div>
@@ -431,29 +100,38 @@
     </div>
 
     <!-- Alert Modal -->
-    <div id="alertModal" class="modal" style="display: none">
-      <div class="modal-content" style="max-width: 400px;">
-        <h2 id="alertTitle" style="margin: 0 0 16px 0; font-size: 18px; color: #333;">Alert</h2>
-        <p id="alertMessage" style="margin: 0 0 20px 0; font-size: 14px; line-height: 1.5; color: #666;"></p>
-        <div class="modal-actions">
-          <button id="alertOkBtn" class="primary">OK</button>
+    <div id="alertModal" class="fixed inset-0 flex items-center justify-center z-50" style="display: none; pointer-events: none;">
+      <div class="bg-white rounded-lg shadow-lg p-6 w-11/12 max-w-sm" style="pointer-events: auto;">
+        <h2 id="alertTitle" class="text-lg font-semibold text-gray-900 mb-3">Alert</h2>
+        <p id="alertMessage" class="text-gray-700 mb-4"></p>
+        <div class="flex justify-end">
+          <button id="alertOkBtn" class="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded hover:bg-blue-700">
+            OK
+          </button>
         </div>
       </div>
     </div>
 
     <!-- Confirmation Modal -->
-    <div id="confirmModal" class="modal" style="display: none">
-      <div class="modal-content" style="max-width: 500px;">
-        <h2 id="confirmTitle" style="margin: 0 0 16px 0; font-size: 18px; color: #333;">Confirm Import</h2>
-        <div id="confirmMessage" style="margin: 0 0 20px 0; font-size: 14px; line-height: 1.5; color: #666;"></div>
-        <div class="modal-actions">
-          <button id="confirmCancelBtn">Cancel</button>
-          <button id="confirmOkBtn" class="primary">Continue Import</button>
+    <div id="confirmModal" class="fixed inset-0 flex items-center justify-center z-50" style="display: none; pointer-events: none;">
+      <div class="bg-white rounded-lg shadow-lg p-6 w-11/12 max-w-md" style="pointer-events: auto;">
+        <h2 id="confirmTitle" class="text-lg font-semibold text-gray-900 mb-3">Confirm Import</h2>
+        <div id="confirmMessage" class="text-gray-700 mb-4"></div>
+        <div class="flex justify-end gap-2">
+          <button id="confirmCancelBtn" class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded hover:bg-gray-50">
+            Cancel
+          </button>
+          <button id="confirmOkBtn" class="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded hover:bg-blue-700">
+            Continue Import
+          </button>
         </div>
       </div>
     </div>
 
-    <script src="ynab-api.js"></script>
+    <script src="lib/constants.js"></script>
+    <script src="lib/storage-utils.js"></script>
+    <script src="lib/ynab-api.js"></script>
+    <script src="lib/helpers.js"></script>
     <script src="popup.js"></script>
   </body>
 </html>

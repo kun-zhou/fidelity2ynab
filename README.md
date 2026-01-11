@@ -11,9 +11,11 @@ A Chrome extension that scrapes transaction data from Fidelity cash management a
   - Automatically clears matching uncleared YNAB transactions
   - Shows preview of what will be imported before you commit
   - Configurable date tolerance
-- **Visual Import Preview**: Color-coded badges showing transaction status:
+- **Visual Import Preview**: Color-coded badges showing transaction status (hover for explanation):
   - **GREEN "NEW"** - Will create new transaction in YNAB
-  - **ORANGE "TO CLEAR"** - Will clear existing uncleared transaction
+  - **WHITE "MATCH AVAILABLE"** - Matching suggestions available, selection required
+  - **BLUE "MATCHED"** - Will clear existing uncleared transaction
+  - **ORANGE "PENDING"** - Transaction still processing in Fidelity, won't be cleared
   - **GRAY "CLEARED"** - Already cleared in YNAB (no action needed)
   - Hide Cleared option (default on) to focus on transactions needing action
 - **Smart Suggestions**: For NEW transactions, shows dropdown to select action
@@ -98,7 +100,10 @@ The extension consists of several key components:
 
 - **content.js** - Content script that scrapes Fidelity pages
 - **popup.html/js** - Extension popup UI and event handling
-- **ynab-api.js** - YNAB API wrapper and transaction matching logic
+- **lib/ynab-api.js** - YNAB API wrapper and transaction matching logic
+- **lib/helpers.js** - HTML template generation and badge rendering
+- **lib/constants.js** - Centralized configuration (badge colors, storage keys, etc.)
+- **lib/storage-utils.js** - Promise-based Chrome storage utilities
 
 ### Transaction Matching Algorithm
 
@@ -124,20 +129,22 @@ For each Fidelity transaction:
 - **NEW**: Fidelity transaction with no YNAB match → create new transaction
   - For each NEW transaction, finds unmatched YNAB transactions with same amount
   - If suggestions found, shows dropdown to select which YNAB transaction to match (or create new)
-- **TO CLEAR**: Matched with uncleared YNAB transaction → update to cleared (and update date if not a transfer)
+- **MATCHED**: Matched with uncleared YNAB transaction → update to cleared (and update date if not a transfer)
+- **PENDING**: Transaction still processing in Fidelity and matches YNAB → skip clearing until settled
 - **CLEARED**: Matched with already cleared YNAB transaction → skip (already in sync)
 
 #### Step 5: Process & Warn
 - Processes NEW transactions based on user selections:
   - Creates new YNAB transactions (if user chose "Create new transaction")
-  - Updates user-selected YNAB transactions (if user chose to match with existing) - same logic as automatic TO CLEAR matches:
+  - Updates user-selected YNAB transactions (if user chose to match with existing) - same logic as automatic MATCHED transactions:
     - Always: sets cleared to 'cleared'
     - For uncleared non-transfers: also updates date to Fidelity date
     - For transfers or already-cleared: only updates cleared status
-- Updates automatic TO CLEAR matches:
+- Updates automatic MATCHED transactions:
   - Sets cleared status to 'cleared'
   - For uncleared non-transfer transactions: also updates date to match Fidelity date
   - For transfer or already-cleared transactions: only updates cleared status
+- Skips PENDING transactions (still processing in Fidelity)
 - Shows confirmation if unmatched YNAB transactions remain after user selections
 - Shows you exactly which YNAB transaction matched each Fidelity transaction
 
@@ -152,14 +159,16 @@ This algorithm ensures:
 ### Example Scenario
 
 **Scraped Fidelity Transactions:**
-- Jan 10: Grocery Store ($50)
-- Jan 15: Gas Station ($40)
-- Jan 20: Restaurant ($30)
-- Jan 25: Coffee Shop ($5)
+- Jan 10: Grocery Store ($50) - Settled
+- Jan 15: Gas Station ($40) - Settled
+- Jan 20: Restaurant ($30) - Settled
+- Jan 25: Coffee Shop ($5) - Settled
+- Jan 28: Online Purchase ($25) - Processing
 
 **Existing YNAB Transactions:**
 - Jan 12: Safeway ($50) - uncleared
 - Jan 20: Italian Restaurant ($30) - cleared
+- Jan 29: Amazon ($25) - uncleared
 - Dec 28: Starbucks ($5) - uncleared (outside tolerance window)
 
 **What Happens:**
@@ -167,7 +176,7 @@ This algorithm ensures:
 1. **YNAB Fetch**: Fetches YNAB transactions from Jan 5 (Jan 10 - 5 days tolerance)
 
 2. **Matching & Suggestions**:
-   - Grocery Store (Jan 10) → matches uncleared YNAB Jan 12 ($50) → **TO CLEAR** (within tolerance)
+   - Grocery Store (Jan 10) → matches uncleared YNAB Jan 12 ($50) → **MATCHED** (within tolerance)
    - Gas Station (Jan 15) → no match → **NEW** with dropdown:
      - Shows: "No matching YNAB transactions found"
      - Dropdown defaults to "Create new transaction" (ready to import)
@@ -179,11 +188,13 @@ This algorithm ensures:
        - "Create new transaction" - Creates new YNAB transaction
        - "Match with: Dec 28: Starbucks ($5.00) [uncleared]" - Updates existing
      - Import is blocked until user makes a selection
+   - Online Purchase (Jan 28, Processing) → matches YNAB Jan 29 ($25) → **PENDING** (still processing)
 
 3. **Import** (assuming user selected "Match with: Starbucks"):
    - Creates new YNAB transaction for Gas Station
    - Updates Grocery Store YNAB transaction: sets to cleared and updates date from Jan 12 to Jan 10
    - Updates Starbucks YNAB transaction: sets to cleared and updates date from Dec 28 to Jan 25
+   - Skips Online Purchase (PENDING - still processing in Fidelity)
 
 4. **Warnings & Display**:
    - Before import, confirmation dialog asks if you want to continue with unmatched transactions
@@ -306,13 +317,24 @@ Note: YNAB uses milliunits for amounts (multiply by 1000).
 
 ## Files
 
+### Core Files
 - `manifest.json` - Chrome extension configuration
 - `content.js` - Content script that scrapes transaction data from the page
 - `popup.html` - Extension popup UI
 - `popup.js` - Popup logic and data handling
-- `ynab-api.js` - YNAB API integration and deduplication logic
+- `input.css` - Custom CSS styles (compiled to tailwind.css)
+- `tailwind.css` - Compiled Tailwind CSS (generated via `make css`)
+- `Makefile` - Build and validation scripts
+
+### Library Files (lib/)
+- `lib/ynab-api.js` - YNAB API integration and transaction matching logic
+- `lib/helpers.js` - HTML template generation and utility functions
+- `lib/constants.js` - Centralized configuration and constants
+- `lib/storage-utils.js` - Promise-based Chrome storage wrappers
+
+### Assets
 - `icon16.png`, `icon48.png`, `icon128.png` - Extension icons
-- `README.md` - This file
+- `tailwindcss-macos-arm64` - Tailwind CSS CLI tool (for building)
 
 ## Future Enhancements
 
