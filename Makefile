@@ -1,4 +1,7 @@
-.PHONY: css clean test validate
+.PHONY: all css clean test validate
+
+all: css validate
+	@echo "✓ Build complete!"
 
 css:
 	./tailwindcss-macos-arm64 -i ./input.css -o ./tailwind.css --minify
@@ -20,6 +23,7 @@ validate:
 	@test -f lib/constants.js && echo "  ✓ lib/constants.js exists" || echo "  ✗ lib/constants.js missing"
 	@test -f lib/storage-utils.js && echo "  ✓ lib/storage-utils.js exists" || echo "  ✗ lib/storage-utils.js missing"
 	@test -f tailwind.css && echo "  ✓ tailwind.css exists" || echo "  ✗ tailwind.css missing (run 'make css')"
+	@test -f icon.png && echo "  ✓ icon.png exists" || echo "  ✗ icon.png missing"
 	@echo "Checking for common JS errors..."
 	@! grep -n "console.log" *.js lib/*.js && echo "  ✓ No console.log statements" || echo "  ⚠ Warning: console.log statements found"
 	@! grep -n "debugger" *.js lib/*.js && echo "  ✓ No debugger statements" || echo "  ⚠ Warning: debugger statements found"

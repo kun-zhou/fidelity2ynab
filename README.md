@@ -35,6 +35,15 @@ A Chrome extension that scrapes transaction data from Fidelity cash management a
 
 ## Quick Start
 
+### Step 0: Build (First Time Setup)
+
+Build and validate:
+```bash
+make        # Build CSS and validate (default)
+# or
+make test   # Build, validate, and run tests
+```
+
 ### Step 1: Load Extension in Chrome
 
 1. Open Chrome and go to `chrome://extensions/`
@@ -281,7 +290,7 @@ Note: YNAB uses milliunits for amounts (multiply by 1000).
 - Check that you're on the correct account page
 
 ### Extension won't load
-- Make sure all three icon files exist (icon16.png, icon48.png, icon128.png)
+- Make sure icon.png exists
 - Check that manifest.json is present
 - Try reloading the extension from chrome://extensions/
 
@@ -333,8 +342,21 @@ Note: YNAB uses milliunits for amounts (multiply by 1000).
 - `lib/storage-utils.js` - Promise-based Chrome storage wrappers
 
 ### Assets
-- `icon16.png`, `icon48.png`, `icon128.png` - Extension icons
+- `icon.png` - Extension icon
 - `tailwindcss-macos-arm64` - Tailwind CSS CLI tool (for building)
+
+## Build Commands
+
+Available Makefile commands:
+
+```bash
+make           # Build CSS and validate (default)
+make all       # Same as default - build CSS and validate
+make css       # Build Tailwind CSS from input.css
+make validate  # Validate all files and check for common errors
+make test      # Run validation and tests
+make clean     # Remove generated files (CSS)
+```
 
 ## Future Enhancements
 
