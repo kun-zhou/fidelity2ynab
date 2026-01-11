@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fidelity Test Page - Transaction Scraper Demo</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+        }
+        .info {
+            background: #e3f2fd;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+            border-left: 4px solid #2196F3;
+        }
+        .gridRow {
+            margin-bottom: 10px;
+        }
+        .pvd-grid__grid {
+            display: grid;
+            grid-template-columns: 40px 100px 1fr 150px 150px;
+            gap: 10px;
+            align-items: center;
+            padding: 10px;
+            border: 1px solid #e0e0e0;
+            border-radius: 4px;
+        }
+        .pvd-grid__item {
+            padding: 5px;
+        }
+        .activity-item-context {
+            font-weight: normal;
+        }
+        .activity-item-break-wording {
+            font-weight: normal;
+        }
+        .ao-status {
+            font-weight: bold;
+        }
+        .grid-item__status {
+            text-align: right;
+        }
+        h1 {
+            color: #333;
+            border-bottom: 2px solid #0066cc;
+            padding-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Test Page - Fidelity Transaction Scraper</h1>
+
+        <div class="info">
+            <strong>Testing Instructions:</strong>
+            <ol>
+                <li>Load this HTML file in Chrome</li>
+                <li>Click the extension icon</li>
+                <li>Click "Scrape Transactions"</li>
+                <li>You should see 5 sample transactions extracted</li>
+            </ol>
+            <p><em>Note: This page mimics the structure of Fidelity's transaction table for testing purposes.</em></p>
+        </div>
+
+        <!-- Fidelity Activity Tab Component (for validation) -->
+        <div style="margin-bottom: 20px; padding: 10px; background: #f0f0f0; border-radius: 4px;">
+            <p><strong>Mock Navigation Tab:</strong></p>
+            <a class="new-tab__tab" href="ftgw/digital/portfolio/activity">
+                <span class="new-tab__text-wrapper tab-label">Activity &amp; Orders</span>
+            </a>
+        </div>
+
+        <!-- Mock transaction container -->
+        <activity-list>
+            <h2>Sample Transactions (Including Core Fund Transactions)</h2>
+            <p style="font-size: 12px; color: #666;">This test page includes both regular transactions and core fund transactions to test the filtering feature.</p>
+
+        <!-- Transaction 1 - Core Fund (should be skipped by default) -->
+        <div role="rowgroup" class="gridRow">
+            <div role="row" class="pvd-grid__grid">
+                <div role="cell"></div>
+                <div role="cell" class="pvd-grid__item activity-item-context">Jan-10-2026</div>
+                <div role="rowheader" class="pvd-grid__item activity-item-context activity-item-break-wording">
+                    <div class="pvd-grid__item">REDEMPTION FROM CORE ACCOUNT FIDELITY TREASURY ONLY MONEY MARKET FD (FDLXX) (Cash)</div>
+                </div>
+                <div role="cell" class="pvd-grid__item ao-status grid-item__status" style="color: rgb(54, 135, 39);">+$162.40</div>
+                <div role="cell" class="pvd-grid__item grid-item__status">
+                    <div class="pvd-grid__item">$162.40</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Transaction 2 - Credit with Processing status -->
+        <div role="rowgroup" class="gridRow">
+            <div role="row" class="pvd-grid__grid">
+                <div role="cell"></div>
+                <div role="cell" class="pvd-grid__item activity-item-context">Jan-12-2026</div>
+                <div role="rowheader" class="pvd-grid__item activity-item-context activity-item-break-wording">
+                    <div class="pvd-grid__item">Electronic Funds Transfer Received (Cash)</div>
+                </div>
+                <div role="cell" class="pvd-grid__item ao-status grid-item__status" style="color: rgb(54, 135, 39);">+$455.84</div>
+                <div role="cell" class="pvd-grid__item grid-item__status">
+                    <div class="pvd-grid__item">Processing</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Transaction 2 - Credit -->
+        <div role="rowgroup" class="gridRow">
+            <div role="row" class="pvd-grid__grid">
+                <div role="cell"></div>
+                <div role="cell" class="pvd-grid__item activity-item-context">Jan-08-2026</div>
+                <div role="rowheader" class="pvd-grid__item activity-item-context activity-item-break-wording">
+                    <div class="pvd-grid__item">DIRECT DEPOSIT VANGUARD SELINVESTMENT (Cash)</div>
+                </div>
+                <div role="cell" class="pvd-grid__item ao-status grid-item__status" style="color: rgb(54, 135, 39);">+$8,200.00</div>
+                <div role="cell" class="pvd-grid__item grid-item__status">
+                    <div class="pvd-grid__item">$8,200.00</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Transaction 3 - Debit -->
+        <div role="rowgroup" class="gridRow">
+            <div role="row" class="pvd-grid__grid">
+                <div role="cell"></div>
+                <div role="cell" class="pvd-grid__item activity-item-context">Jan-07-2026</div>
+                <div role="rowheader" class="pvd-grid__item activity-item-context activity-item-break-wording">
+                    <div class="pvd-grid__item">DIRECT DEBIT Wawanesa Insurdebitpmt (Cash)</div>
+                </div>
+                <div role="cell" class="pvd-grid__item ao-status grid-item__status" style="color: rgb(0, 0, 0);">-$287.40</div>
+                <div role="cell" class="pvd-grid__item grid-item__status">
+                    <div class="pvd-grid__item">$0.00</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Transaction 4 - Credit -->
+        <div role="rowgroup" class="gridRow">
+            <div role="row" class="pvd-grid__grid">
+                <div role="cell"></div>
+                <div role="cell" class="pvd-grid__item activity-item-context">Jan-07-2026</div>
+                <div role="rowheader" class="pvd-grid__item activity-item-context activity-item-break-wording">
+                    <div class="pvd-grid__item">DIRECT DEPOSIT VENMO CASHOUT (Cash)</div>
+                </div>
+                <div role="cell" class="pvd-grid__item ao-status grid-item__status" style="color: rgb(54, 135, 39);">+$125.00</div>
+                <div role="cell" class="pvd-grid__item grid-item__status">
+                    <div class="pvd-grid__item">$287.40</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Transaction 5 - Credit -->
+        <div role="rowgroup" class="gridRow">
+            <div role="row" class="pvd-grid__grid">
+                <div role="cell"></div>
+                <div role="cell" class="pvd-grid__item activity-item-context">Dec-31-2025</div>
+                <div role="rowheader" class="pvd-grid__item activity-item-context activity-item-break-wording">
+                    <div class="pvd-grid__item">DIRECT DEPOSIT SIERRA TECHNPAYROLL (Cash)</div>
+                </div>
+                <div role="cell" class="pvd-grid__item ao-status grid-item__status" style="color: rgb(54, 135, 39);">+$10,044.12</div>
+                <div role="cell" class="pvd-grid__item grid-item__status">
+                    <div class="pvd-grid__item">$10,064.49</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Transaction 6 - Core Fund Buy (should be skipped by default) -->
+        <div role="rowgroup" class="gridRow">
+            <div role="row" class="pvd-grid__grid">
+                <div role="cell"></div>
+                <div role="cell" class="pvd-grid__item activity-item-context">Dec-30-2025</div>
+                <div role="rowheader" class="pvd-grid__item activity-item-context activity-item-break-wording">
+                    <div class="pvd-grid__item">YOU BOUGHT PROSPECTUS UNDER SEPARATE COVER FIDELITY TREASURY ONLY MONEY MARKET FD (FDLXX) (Cash)</div>
+                </div>
+                <div role="cell" class="pvd-grid__item ao-status grid-item__status" style="color: rgb(0, 0, 0);">-$6,000.00</div>
+                <div role="cell" class="pvd-grid__item grid-item__status">
+                    <div class="pvd-grid__item">$1,095.32</div>
+                </div>
+            </div>
+        </div>
+
+        </activity-list>
+    </div>
+</body>
+</html>
