@@ -3,6 +3,12 @@
   "name": "Fidelity Transaction Scraper",
   "version": "1.0.0",
   "description": "Scrapes and parses transaction data from Fidelity cash management accounts",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "fidelity2ynab@example.com",
+      "strict_min_version": "109.0"
+    }
+  },
   "permissions": [
     "activeTab",
     "scripting",

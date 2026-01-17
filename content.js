@@ -10,7 +10,7 @@
  * - 'validatePage': Validates current page is Activity & Orders
  * - 'scrapeTransactions': Validates page and scrapes transactions
  */
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+browser.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'validatePage') {
     // validateFidelityActivityPage is defined in lib/banks/fidelity/scraper.js
     sendResponse(validateFidelityActivityPage());

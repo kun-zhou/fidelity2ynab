@@ -181,7 +181,7 @@ async function scrapeTransactions() {
     scrapeBtn.disabled = true;
 
     // Get the active tab
-    const [tab] = await chrome.tabs.query({
+    const [tab] = await browser.tabs.query({
       active: true,
       currentWindow: true,
     });
@@ -196,7 +196,7 @@ async function scrapeTransactions() {
     // Inject the content script if not already injected
     // Note: scraper.js must be loaded before content.js as content.js depends on it
     try {
-      await chrome.scripting.executeScript({
+      await browser.scripting.executeScript({
         target: { tabId: tab.id },
         files: ["lib/banks/fidelity/scraper.js", "content.js"],
       });
@@ -211,7 +211,7 @@ async function scrapeTransactions() {
       : true;
     console.log("Scraping with skipCoreFunds:", skipCoreFunds);
 
-    const response = await chrome.tabs.sendMessage(tab.id, {
+    const response = await browser.tabs.sendMessage(tab.id, {
       action: "scrapeTransactions",
       skipCoreFunds: skipCoreFunds,
     });
