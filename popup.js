@@ -1,12 +1,5 @@
 /**
  * Fidelity2YNAB - Popup Script
- *
- * Main UI controller for the extension popup
- * Handles:
- * - Transaction scraping and display
- * - YNAB configuration and API interactions
- * - Settings management (Chrome storage)
- * - Import preview with transaction matching
  */
 
 // Global state
@@ -17,6 +10,9 @@ let transactionsPending = [];
 let transactionsMatched = [];
 let unmatchedYnab = [];
 let ynabConfig = null;
+
+// Bank adapter (Fidelity)
+const bankAdapter = FidelityAdapter;
 
 // DOM element references
 let scrapeBtn,
@@ -190,18 +186,19 @@ async function scrapeTransactions() {
       currentWindow: true,
     });
 
-    // Check if we're on a Fidelity page
-    if (!tab.url.includes("fidelity.com")) {
-      showStatus("Please navigate to a Fidelity page first", "error");
+    // Check if we're on a supported bank page
+    if (!bankAdapter.matchesUrl(tab.url)) {
+      showStatus(`Please navigate to a ${bankAdapter.bankName} page first`, "error");
       scrapeBtn.disabled = false;
       return;
     }
 
     // Inject the content script if not already injected
+    // Note: scraper.js must be loaded before content.js as content.js depends on it
     try {
       await chrome.scripting.executeScript({
         target: { tabId: tab.id },
-        files: ["content.js"],
+        files: ["lib/banks/fidelity/scraper.js", "content.js"],
       });
     } catch (e) {
       // Script might already be injected, continue
@@ -648,11 +645,9 @@ async function importToYNAB() {
     );
     // Highlight the first unselected dropdown button
     if (unselectedDropdowns[0]) {
-      const fidelityIndex = unselectedDropdowns[0].getAttribute(
-        "data-fidelity-index"
-      );
+      const txnIndex = unselectedDropdowns[0].getAttribute("data-txn-index");
       const dropdownBtn = document.querySelector(
-        `.custom-dropdown-btn[data-fidelity-index="${fidelityIndex}"]`
+        `.custom-dropdown-btn[data-txn-index="${txnIndex}"]`
       );
       if (dropdownBtn) {
         dropdownBtn.style.border = "0.125rem solid #d32f2f";
@@ -704,7 +699,7 @@ async function importToYNAB() {
         stillUnmatched.length
       } YNAB transaction${
         stillUnmatched.length > 1 ? "s" : ""
-      } could not be automatically matched with Fidelity transactions:</p>
+      } could not be automatically matched with ${bankAdapter.bankName} transactions:</p>
       <ul style="margin: 0 0 0.75rem 1.25rem; padding: 0; max-height: 12.5rem; overflow-y: auto;">
         ${unmatchedList}
       </ul>
@@ -720,195 +715,55 @@ async function importToYNAB() {
   }
 
   try {
-    const totalActions =
-      transactionsToImport.length + transactionsToUpdate.length;
-    showStatus(
-      `Processing ${totalActions} transaction${
-        totalActions > 1 ? "s" : ""
-      } to YNAB...`,
-      "info"
-    );
-
     const importBtn = document.getElementById("ynabImportBtn");
     if (importBtn) importBtn.disabled = true;
 
     const api = new YNABApi(ynabConfig.token);
-    const dateTolerance = 5;
-    const deduplicator = new TransactionDeduplicator(dateTolerance);
+    const toCreate = [], toMatch = [];
 
-    let createdCount = 0;
-    let updatedCount = 0;
-
-    // Step 1: Process new transactions (create or match with suggestions)
-    if (transactionsToImport.length > 0) {
-      const toCreate = [];
-      const toMatchWithSuggestions = [];
-
-      console.log(
-        `Processing ${transactionsToImport.length} transactions to import...`
+    // Process transactions to import
+    for (const item of transactionsToImport) {
+      const { bank: bankTxn, suggestions } = item;
+      const txnIndex = currentTransactions.findIndex(t =>
+        t.date === bankTxn.date && t.description === bankTxn.description && t.amountValue === bankTxn.amountValue
       );
 
-      // Check user selections for each transaction
-      for (const item of transactionsToImport) {
-        const fidelityTxn = item.fidelity;
-        const suggestions = item.suggestions;
+      const dropdown = [...document.querySelectorAll(".suggestion-dropdown")].find(d => d.dataset.txnIndex === String(txnIndex));
+      const selectedValue = dropdown?.value;
 
-        // Find the index of this transaction in currentTransactions
-        const txnIndex = currentTransactions.findIndex(
-          (t) =>
-            t.date === fidelityTxn.date &&
-            t.description === fidelityTxn.description &&
-            t.amountValue === fidelityTxn.amountValue
-        );
-
-        // Find if user selected a suggestion
-        let selectedValue = null;
-        if (txnIndex !== -1) {
-          const dropdowns = document.querySelectorAll(".suggestion-dropdown");
-          for (const dropdown of dropdowns) {
-            if (dropdown.dataset.fidelityIndex === String(txnIndex)) {
-              selectedValue = dropdown.value;
-              break;
-            }
-          }
-        }
-
-        if (suggestions.length === 0) {
-          // No suggestions available, automatically create new transaction
-          toCreate.push(fidelityTxn);
-          console.log(
-            "Will create new transaction (no matches):",
-            fidelityTxn.description
-          );
-        } else if (selectedValue === "__CREATE_NEW__") {
-          // User explicitly chose to create new transaction
-          toCreate.push(fidelityTxn);
-          console.log(
-            "Will create new transaction for:",
-            fidelityTxn.description
-          );
-        } else if (selectedValue) {
-          // User selected a YNAB transaction to match with
-          const selectedYnab = suggestions.find((y) => y.id === selectedValue);
-          if (selectedYnab) {
-            toMatchWithSuggestions.push({
-              fidelity: fidelityTxn,
-              ynab: selectedYnab,
-            });
-            console.log(
-              "Will match Fidelity transaction with YNAB:",
-              fidelityTxn.description,
-              "→",
-              selectedYnab.payee_name
-            );
-          } else {
-            console.error(
-              "Could not find selected YNAB transaction with ID:",
-              selectedValue
-            );
-            throw new Error(
-              `Internal error: Could not find YNAB transaction with ID ${selectedValue}`
-            );
-          }
-        } else {
-          // No selection found - FAIL HARD
-          console.error(
-            "No user selection found for transaction:",
-            fidelityTxn
-          );
-          throw new Error(
-            `Internal error: Transaction "${fidelityTxn.description}" has no user selection (${suggestions.length} suggestions available)`
-          );
-        }
-      }
-
-      console.log(
-        `Summary: ${toCreate.length} to create, ${toMatchWithSuggestions.length} to manually match`
-      );
-
-      // Create new transactions
-      if (toCreate.length > 0) {
-        const ynabTransactions = toCreate.map((txn) =>
-          deduplicator.fidelityToYNAB(txn, ynabConfig.accountId)
-        );
-
-        const result = await api.createTransactions(
-          ynabConfig.budgetId,
-          ynabTransactions
-        );
-        createdCount = result.transactions.length;
-        console.log(`Created ${createdCount} new transactions`);
-      }
-
-      // Update matched suggestions (same logic as TO CLEAR)
-      if (toMatchWithSuggestions.length > 0) {
-        for (const match of toMatchWithSuggestions) {
-          const updates = { cleared: "cleared" };
-
-          // For non-transfer transactions, also update the date
-          const isTransfer =
-            match.ynab.transfer_account_id !== null &&
-            match.ynab.transfer_account_id !== undefined;
-          if (!isTransfer) {
-            const fidelityDate = deduplicator.parseFidelityDate(
-              match.fidelity.date
-            );
-            if (fidelityDate) {
-              updates.date = fidelityDate;
-            }
-          }
-
-          await api.updateTransaction(
-            ynabConfig.budgetId,
-            match.ynab.id,
-            updates
-          );
-          updatedCount++;
-        }
-        console.log(
-          `Matched ${toMatchWithSuggestions.length} transactions with user-selected YNAB transactions`
-        );
+      if (suggestions.length === 0 || selectedValue === "__CREATE_NEW__") {
+        toCreate.push(bankTxn);
+      } else if (selectedValue) {
+        const selectedYnab = suggestions.find(y => y.id === selectedValue);
+        if (selectedYnab) toMatch.push({ bank: bankTxn, ynab: selectedYnab });
       }
     }
 
-    // Step 2: Update existing uncleared transactions to cleared
-    if (transactionsToUpdate.length > 0) {
-      for (const match of transactionsToUpdate) {
-        const updates = { cleared: "cleared" };
+    let createdCount = 0, updatedCount = 0;
 
-        // For non-transfer transactions, also update the date
-        const isTransfer =
-          match.ynab.transfer_account_id !== null &&
-          match.ynab.transfer_account_id !== undefined;
-        if (!isTransfer) {
-          const fidelityDate = deduplicator.parseFidelityDate(
-            match.fidelity.date
-          );
-          if (fidelityDate) {
-            updates.date = fidelityDate;
-          }
-        }
-
-        await api.updateTransaction(
-          ynabConfig.budgetId,
-          match.ynab.id,
-          updates
-        );
-        updatedCount++;
-      }
-      console.log(`Updated ${updatedCount} transactions to cleared`);
+    // Create new transactions
+    if (toCreate.length > 0) {
+      const ynabTxns = toCreate.map(txn => bankAdapter.toYNABTransaction(txn, ynabConfig.accountId));
+      const result = await api.createTransactions(ynabConfig.budgetId, ynabTxns);
+      createdCount = result.transactions.length;
     }
 
-    // Show success message
+    // Update matched transactions
+    const allToUpdate = [...toMatch, ...transactionsToUpdate];
+    for (const { bank, ynab } of allToUpdate) {
+      const updates = { cleared: 'cleared' };
+      if (!ynab.transfer_account_id) updates.date = bankAdapter.parseDate(bank.date);
+      await api.updateTransaction(ynabConfig.budgetId, ynab.id, updates);
+      updatedCount++;
+    }
+
     const messages = [];
     if (createdCount > 0) messages.push(`${createdCount} created`);
     if (updatedCount > 0) messages.push(`${updatedCount} updated`);
-    showStatus(`✓ Successfully processed: ${messages.join(", ")}!`, "success");
+    showStatus(`✓ ${messages.join(", ")}`, "success");
 
-    // Re-analyze to update the preview
     await analyzeTransactions();
   } catch (error) {
-    console.error("Error importing to YNAB:", error);
     showStatus(`Import Error: ${error.message}`, "error");
   } finally {
     const importBtn = document.getElementById("ynabImportBtn");
@@ -918,49 +773,21 @@ async function importToYNAB() {
 
 // Analyze transactions and find what needs to be imported
 async function analyzeTransactions() {
-  if (!ynabConfig || !ynabConfig.token || currentTransactions.length === 0) {
-    return;
-  }
+  if (!ynabConfig || !ynabConfig.token || currentTransactions.length === 0) return;
 
   try {
     const api = new YNABApi(ynabConfig.token);
-    const dateTolerance = 5;
-    const deduplicator = new TransactionDeduplicator(dateTolerance);
+    const deduplicator = new TransactionDeduplicator(bankAdapter);
 
-    // Find earliest Fidelity transaction date
-    const earliestFidelityDate =
-      deduplicator.getEarliestFidelityDate(currentTransactions);
+    const earliestDate = deduplicator.getEarliestBankDate(currentTransactions);
+    if (!earliestDate) return;
 
-    if (!earliestFidelityDate) {
-      showStatus("No valid transaction dates found", "error");
-      return;
-    }
-
-    // Calculate fetch date: earliest Fidelity date - tolerance
-    const fetchDate = new Date(earliestFidelityDate);
-    fetchDate.setDate(fetchDate.getDate() - dateTolerance);
+    const fetchDate = new Date(earliestDate);
+    fetchDate.setDate(fetchDate.getDate() - 5);
     const sinceDate = deduplicator.formatDate(fetchDate);
 
-    console.log(
-      `Earliest Fidelity date: ${earliestFidelityDate}, fetching YNAB since: ${sinceDate}`
-    );
-
-    // Fetch YNAB transactions
-    const ynabTransactions = await api.getTransactionsSinceDate(
-      ynabConfig.budgetId,
-      ynabConfig.accountId,
-      sinceDate
-    );
-
-    console.log(
-      `Found ${ynabTransactions.length} YNAB transactions since ${sinceDate}`
-    );
-
-    // Find transactions to import/update
-    const result = await deduplicator.findTransactionsToImport(
-      currentTransactions,
-      ynabTransactions
-    );
+    const ynabTxns = await api.getTransactionsSinceDate(ynabConfig.budgetId, ynabConfig.accountId, sinceDate);
+    const result = deduplicator.findTransactionsToImport(currentTransactions, ynabTxns);
 
     transactionsToImport = result.toImport;
     transactionsToUpdate = result.toUpdate;
@@ -968,14 +795,8 @@ async function analyzeTransactions() {
     transactionsMatched = result.matched;
     unmatchedYnab = result.unmatchedYnab || [];
 
-    console.log(
-      `Analysis: ${result.toImport.length} to import, ${result.toUpdate.length} to update, ${transactionsPending.length} pending, ${result.matched.length} already matched, ${unmatchedYnab.length} unmatched YNAB`
-    );
-
-    // Update display with preview
     displayTransactionsWithYnabPreview(result);
   } catch (error) {
-    console.error("Error analyzing transactions:", error);
     showStatus(`Analysis Error: ${error.message}`, "error");
   }
 }
@@ -997,16 +818,16 @@ function displayTransactionsWithYnabPreview(analysisResult) {
 
   // Create maps for quick lookup
   const toImportMap = new Map(
-    toImport.map((item) => [JSON.stringify(item.fidelity), item.suggestions])
+    toImport.map((item) => [JSON.stringify(item.bank), item.suggestions])
   );
   const toUpdateMap = new Map(
-    toUpdate.map((item) => [JSON.stringify(item.fidelity), item.ynab])
+    toUpdate.map((item) => [JSON.stringify(item.bank), item.ynab])
   );
   const pendingMap = new Map(
-    pending.map((item) => [JSON.stringify(item.fidelity), item.ynab])
+    pending.map((item) => [JSON.stringify(item.bank), item.ynab])
   );
   const matchedMap = new Map(
-    matched.map((item) => [JSON.stringify(item.fidelity), item.ynab])
+    matched.map((item) => [JSON.stringify(item.bank), item.ynab])
   );
 
   // Count how many toImport transactions have suggestions (pending matches)
@@ -1191,7 +1012,7 @@ function attachCustomDropdownListeners() {
     const option = e.target.closest(".dropdown-option");
     if (option) {
       const value = option.getAttribute("data-value");
-      const fidelityIndex = option.getAttribute("data-fidelity-index");
+      const txnIndex = option.getAttribute("data-txn-index");
       const container = option.closest(".relative");
       const btn = container?.querySelector(".custom-dropdown-btn");
       const dropdown = option.closest(".custom-dropdown-menu");

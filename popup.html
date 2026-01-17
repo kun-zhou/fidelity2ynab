@@ -128,9 +128,13 @@
       </div>
     </div>
 
-    <script src="lib/constants.js"></script>
     <script src="lib/storage-utils.js"></script>
-    <script src="lib/ynab-api.js"></script>
+    <!-- Bank adapter -->
+    <script src="lib/banks/fidelity/transformer.js"></script>
+    <!-- YNAB modules -->
+    <script src="lib/ynab/api.js"></script>
+    <script src="lib/ynab/deduplicator.js"></script>
+    <!-- UI -->
     <script src="lib/helpers.js"></script>
     <script src="popup.js"></script>
   </body>
