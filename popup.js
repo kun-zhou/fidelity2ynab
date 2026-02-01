@@ -629,29 +629,18 @@ async function importToYNAB() {
 
     const api = new YNABApi(ynabConfig.token);
     let createdCount = 0, updatedCount = 0, scheduledCount = 0;
+    let lastProcessedTxn = null; // Track for watermark
 
-    // Find the most recent non-scheduled transaction for watermark
-    const allNonScheduled = [
-      ...toCreate.map(txn => ({ txn, type: 'create' })),
-      ...toMatch.map(({ bank }) => ({ txn: bank, type: 'match' }))
-    ];
-    let watermarkTxn = null;
-    if (allNonScheduled.length > 0) {
-      watermarkTxn = allNonScheduled.reduce((latest, curr) => {
-        const latestDate = bankAdapter.parseDate(latest.txn.date);
-        const currDate = bankAdapter.parseDate(curr.txn.date);
-        return currDate > latestDate ? curr : latest;
-      });
-    }
+    // Sort transactions chronologically (oldest first)
+    const getDate = (txn) => bankAdapter.parseDate(txn.date);
+    toCreate.sort((a, b) => getDate(a).localeCompare(getDate(b)));
+    toMatch.sort((a, b) => getDate(a.bank).localeCompare(getDate(b.bank)));
+    toSchedule.sort((a, b) => getDate(a).localeCompare(getDate(b)));
 
-    // Create new cleared transactions
+    // Create new cleared transactions (oldest first, no watermark yet)
     if (toCreate.length > 0) {
       const ynabTxns = toCreate.map((txn) => {
         const ynabTxn = bankAdapter.toYNABTransaction(txn, ynabConfig.accountId);
-        // Add watermark to most recent transaction
-        if (watermarkTxn && watermarkTxn.type === 'create' && watermarkTxn.txn === txn) {
-          ynabTxn.memo = Watermark.createMemo(txn, ynabTxn.memo);
-        }
         if (!ynabTxn.date) {
           throw new Error(`Missing date for transaction: ${txn.description}`);
         }
@@ -659,16 +648,18 @@ async function importToYNAB() {
       });
       const result = await api.createTransactions(ynabConfig.budgetId, ynabTxns);
       createdCount = result.transactions?.length || toCreate.length;
+      // Track most recent created for watermark
+      lastProcessedTxn = { txn: toCreate[toCreate.length - 1], ynabId: result.transaction_ids?.[result.transaction_ids.length - 1] };
     }
 
-    // Create scheduled transactions for processing items (no watermark)
+    // Create scheduled transactions (no watermark - these are pending)
     for (const txn of toSchedule) {
       const scheduledTxn = bankAdapter.toScheduledTransaction(txn, ynabConfig.accountId);
       await api.createScheduledTransaction(ynabConfig.budgetId, scheduledTxn);
       scheduledCount++;
     }
 
-    // Update matched transactions to cleared
+    // Update matched transactions to cleared (oldest first)
     for (const { bank, ynab } of toMatch) {
       const bankDate = bankAdapter.parseDate(bank.date);
       if (!bankDate) {
@@ -679,12 +670,20 @@ async function importToYNAB() {
         cleared: 'cleared',
         date: bankDate
       };
-      // Add watermark to most recent transaction
-      if (watermarkTxn && watermarkTxn.type === 'match' && watermarkTxn.txn === bank) {
-        updates.memo = Watermark.createMemo(bank, ynab.memo);
-      }
       await api.updateTransaction(ynabConfig.budgetId, ynab.id, updates);
       updatedCount++;
+      // Track this as last processed (updates come after creates, so this will be most recent)
+      lastProcessedTxn = { txn: bank, ynabId: ynab.id, existingMemo: ynab.memo };
+    }
+
+    // Add watermark to the last successfully processed transaction
+    if (lastProcessedTxn && lastProcessedTxn.ynabId) {
+      const watermarkMemo = Watermark.createMemo(lastProcessedTxn.txn, lastProcessedTxn.existingMemo || '');
+      const watermarkDate = bankAdapter.parseDate(lastProcessedTxn.txn.date);
+      await api.updateTransaction(ynabConfig.budgetId, lastProcessedTxn.ynabId, {
+        date: watermarkDate,
+        memo: watermarkMemo
+      });
     }
 
     const messages = [];
