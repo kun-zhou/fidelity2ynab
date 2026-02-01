@@ -767,13 +767,10 @@ function displayTransactionsWithYnabPreview(analysisResult) {
     } else if (pendingYnab) {
       matchState = 'matched';
       initialMatches.push({ fidelityIndex: index, ynabId: pendingYnab.id, type: 'match' });
-    } else if (suggestions !== undefined) {
+    } else {
+      // New transaction (not matched to any YNAB transaction)
       matchState = 'new';
-      if (suggestions.length === 1) {
-        initialMatches.push({ fidelityIndex: index, ynabId: suggestions[0].id, type: 'match' });
-      } else if (suggestions.length === 0) {
-        initialMatches.push({ fidelityIndex: index, ynabId: `__CREATE_${index}__`, type: 'create' });
-      }
+      initialMatches.push({ fidelityIndex: index, ynabId: `__CREATE_${index}__`, type: 'create' });
     }
 
     if (isCleared && hideCleared) {
@@ -794,7 +791,8 @@ function displayTransactionsWithYnabPreview(analysisResult) {
         ynabHtml += html.ynabItem(toUpdateYnab, 'matched', index);
       } else if (pendingYnab) {
         ynabHtml += html.ynabItem(pendingYnab, 'matched', index);
-      } else if (suggestions !== undefined) {
+      } else {
+        // New transaction - show "Create New" target
         const formattedPayee = bankAdapter.formatPayeeName(txn.description);
         ynabHtml += html.createNewTarget(index, isSkipped ? null : txn, formattedPayee);
       }
