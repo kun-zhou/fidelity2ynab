@@ -646,7 +646,12 @@ async function importToYNAB() {
         }
         return ynabTxn;
       });
-      const result = await api.createTransactions(ynabConfig.budgetId, ynabTxns);
+      let result;
+      try {
+        result = await api.createTransactions(ynabConfig.budgetId, ynabTxns);
+      } catch (err) {
+        throw new Error(`Failed to create transactions: ${err.message}`);
+      }
       createdCount = result.transactions?.length || toCreate.length;
       // Track most recent created for watermark
       lastProcessedTxn = { txn: toCreate[toCreate.length - 1], ynabId: result.transaction_ids?.[result.transaction_ids.length - 1] };
@@ -655,7 +660,11 @@ async function importToYNAB() {
     // Create scheduled transactions (no watermark - these are pending)
     for (const txn of toSchedule) {
       const scheduledTxn = bankAdapter.toScheduledTransaction(txn, ynabConfig.accountId);
-      await api.createScheduledTransaction(ynabConfig.budgetId, scheduledTxn);
+      try {
+        await api.createScheduledTransaction(ynabConfig.budgetId, scheduledTxn);
+      } catch (err) {
+        throw new Error(`Failed to create scheduled txn "${txn.description}": ${err.message}`);
+      }
       scheduledCount++;
     }
 
@@ -666,11 +675,19 @@ async function importToYNAB() {
         throw new Error(`Missing date for matched transaction: ${bank.description}`);
       }
       // For transfers, keep existing YNAB date (can't change date on linked transactions)
+      const dateToUse = ynab.transfer_account_id ? ynab.date : bankDate;
+      if (!dateToUse) {
+        throw new Error(`No date available for: ${bank.description} (transfer=${!!ynab.transfer_account_id}, ynab.date=${ynab.date})`);
+      }
       const updates = {
         cleared: 'cleared',
-        date: ynab.transfer_account_id ? ynab.date : bankDate
+        date: dateToUse
       };
-      await api.updateTransaction(ynabConfig.budgetId, ynab.id, updates);
+      try {
+        await api.updateTransaction(ynabConfig.budgetId, ynab.id, updates);
+      } catch (err) {
+        throw new Error(`Failed to update "${bank.description}": ${err.message}`);
+      }
       updatedCount++;
       // Track this as last processed (but skip transfers for watermark since we can't update their memo reliably)
       if (!ynab.transfer_account_id) {
@@ -682,10 +699,14 @@ async function importToYNAB() {
     if (lastProcessedTxn && lastProcessedTxn.ynabId) {
       const watermarkMemo = Watermark.createMemo(lastProcessedTxn.txn, lastProcessedTxn.existingMemo || '');
       const watermarkDate = bankAdapter.parseDate(lastProcessedTxn.txn.date);
-      await api.updateTransaction(ynabConfig.budgetId, lastProcessedTxn.ynabId, {
-        date: watermarkDate,
-        memo: watermarkMemo
-      });
+      try {
+        await api.updateTransaction(ynabConfig.budgetId, lastProcessedTxn.ynabId, {
+          date: watermarkDate,
+          memo: watermarkMemo
+        });
+      } catch (err) {
+        throw new Error(`Failed to add watermark: ${err.message}`);
+      }
     }
 
     const messages = [];
