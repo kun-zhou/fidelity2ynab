@@ -419,11 +419,11 @@ function updateYnabStatus() {
   if (ynabConfig && ynabConfig.token && ynabConfig.budgetId && ynabConfig.accountId) {
     ynabStatusText.classList.remove("text-gray-500");
     ynabStatusText.classList.add("text-green-600");
-    ynabStatusText.textContent = "Connected";
+    ynabStatusText.textContent = "YNAB Connected";
   } else {
     ynabStatusText.classList.remove("text-green-600");
     ynabStatusText.classList.add("text-gray-500");
-    ynabStatusText.textContent = "Configure";
+    ynabStatusText.textContent = "Configure YNAB";
   }
 }
 
@@ -844,12 +844,12 @@ function displayTransactionsWithYnabPreview(analysisResult) {
   // Update summary stats in action bar
   summaryStats.innerHTML = html.matchSummaryText({ toCreate, toMatch, toSkip, beforeWatermark: 0 });
 
-  // Show/hide import button based on actions available
+  // Show/hide import button based on actions available (use invisible to reserve space)
   const hasActions = toCreate > 0 || toMatch > 0;
   if (hasActions) {
-    ynabImportBtn.classList.remove("hidden");
+    ynabImportBtn.classList.remove("invisible");
   } else {
-    ynabImportBtn.classList.add("hidden");
+    ynabImportBtn.classList.add("invisible");
   }
 
   // Render two-column layout
