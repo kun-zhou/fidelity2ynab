@@ -665,10 +665,11 @@ async function importToYNAB() {
       if (!bankDate) {
         throw new Error(`Missing date for matched transaction: ${bank.description}`);
       }
-      // For transfers, only update cleared status (can't change date on linked transactions)
-      const updates = ynab.transfer_account_id
-        ? { cleared: 'cleared' }
-        : { cleared: 'cleared', date: bankDate };
+      // For transfers, keep existing YNAB date (can't change date on linked transactions)
+      const updates = {
+        cleared: 'cleared',
+        date: ynab.transfer_account_id ? ynab.date : bankDate
+      };
       await api.updateTransaction(ynabConfig.budgetId, ynab.id, updates);
       updatedCount++;
       // Track this as last processed (but skip transfers for watermark since we can't update their memo reliably)
