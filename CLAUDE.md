@@ -58,7 +58,25 @@ Uses `browser.*` namespace (WebExtensions API) with `webextension-polyfill` for 
                                     │
                                     ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                         FOR EACH FIDELITY TXN                                │
+│                      WATERMARK DETECTION                                     │
+│         Search YNAB memos for [F2Y:<hash>] matching Fidelity txns            │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                    │
+                    ┌───────────────┴───────────────┐
+                    ▼                               ▼
+        ┌───────────────────┐           ┌───────────────────┐
+        │ Watermark found   │           │ No watermark      │
+        │                   │           │                   │
+        │ Split txns into:  │           │ Process all       │
+        │ BEFORE (imported) │           │ Fidelity txns     │
+        │ AFTER (to process)│           │                   │
+        └───────────────────┘           └───────────────────┘
+                    │                               │
+                    └───────────────┬───────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    FOR EACH FIDELITY TXN (after watermark)                   │
 └─────────────────────────────────────────────────────────────────────────────┘
                                     │
                     ┌───────────────┴───────────────┐
