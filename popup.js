@@ -107,6 +107,11 @@ document.addEventListener("DOMContentLoaded", () => {
   // Load YNAB configuration
   loadYnabConfig();
 
+  // Import button click handler
+  if (ynabImportBtn) {
+    ynabImportBtn.addEventListener("click", importToYNAB);
+  }
+
   // Event listeners
   if (scrapeBtn) {
     scrapeBtn.addEventListener("click", scrapeTransactions);
