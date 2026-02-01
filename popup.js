@@ -880,15 +880,35 @@ function setupScrollSync() {
     scrollSyncCleanup();
   }
 
-  // Use wheel event to scroll both columns together
   const onWheel = (e) => {
     e.preventDefault();
-
     const delta = e.deltaY;
 
-    // Scroll both columns by the same amount
-    fidelityCol.scrollTop += delta;
-    ynabCol.scrollTop += delta;
+    const fidelityMax = fidelityCol.scrollHeight - fidelityCol.clientHeight;
+    const ynabMax = ynabCol.scrollHeight - ynabCol.clientHeight;
+
+    if (delta > 0) {
+      // Scrolling DOWN - both scroll together
+      fidelityCol.scrollTop += delta;
+      ynabCol.scrollTop += delta;
+    } else {
+      // Scrolling UP - if YNAB is ahead, it catches up first
+      const fidelityAtTop = fidelityCol.scrollTop <= 0;
+      const ynabAhead = ynabCol.scrollTop > fidelityCol.scrollTop;
+
+      if (ynabAhead && fidelityAtTop) {
+        // Only scroll YNAB until it catches up
+        ynabCol.scrollTop += delta;
+      } else if (ynabAhead) {
+        // YNAB scrolls faster to catch up
+        fidelityCol.scrollTop += delta;
+        ynabCol.scrollTop = Math.max(fidelityCol.scrollTop, ynabCol.scrollTop + delta);
+      } else {
+        // Both scroll together
+        fidelityCol.scrollTop += delta;
+        ynabCol.scrollTop += delta;
+      }
+    }
   };
 
   fidelityCol.addEventListener('wheel', onWheel, { passive: false });
