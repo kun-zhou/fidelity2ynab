@@ -653,10 +653,11 @@ async function importToYNAB() {
 
     // Update matched transactions to cleared
     for (const { bank, ynab } of toMatch) {
-      const updates = { cleared: 'cleared' };
-      if (!ynab.transfer_account_id) {
-        updates.date = bankAdapter.parseDate(bank.date);
-      }
+      // For transfers, keep YNAB's date; otherwise use bank date
+      const updates = {
+        cleared: 'cleared',
+        date: ynab.transfer_account_id ? ynab.date : bankAdapter.parseDate(bank.date)
+      };
       // Add watermark if this is the last transaction and we didn't create any
       if (toCreate.length === 0 && bank === toMatch[toMatch.length - 1].bank) {
         updates.memo = Watermark.createMemo(bank, ynab.memo);
