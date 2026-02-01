@@ -866,8 +866,7 @@ function attachSkipButtonHandlers() {
   });
 }
 
-// Synchronized scrolling between columns
-let scrollSyncActive = false;
+// Synchronized scrolling between columns using wheel events
 let scrollSyncCleanup = null;
 
 function setupScrollSync() {
@@ -881,35 +880,24 @@ function setupScrollSync() {
     scrollSyncCleanup();
   }
 
-  let isSyncing = false;
+  // Use wheel event to scroll both columns together
+  const onWheel = (e) => {
+    e.preventDefault();
 
-  const syncScroll = (source, target) => {
-    if (isSyncing) return;
-    isSyncing = true;
+    const delta = e.deltaY;
 
-    const targetMaxScroll = target.scrollHeight - target.clientHeight;
-
-    // Simply apply the same scroll position, clamped to target's range
-    const newScroll = Math.max(0, Math.min(source.scrollTop, targetMaxScroll));
-    target.scrollTop = newScroll;
-
-    requestAnimationFrame(() => {
-      isSyncing = false;
-    });
+    // Scroll both columns by the same amount
+    fidelityCol.scrollTop += delta;
+    ynabCol.scrollTop += delta;
   };
 
-  const onFidelityScroll = () => syncScroll(fidelityCol, ynabCol);
-  const onYnabScroll = () => syncScroll(ynabCol, fidelityCol);
-
-  fidelityCol.addEventListener('scroll', onFidelityScroll);
-  ynabCol.addEventListener('scroll', onYnabScroll);
+  fidelityCol.addEventListener('wheel', onWheel, { passive: false });
+  ynabCol.addEventListener('wheel', onWheel, { passive: false });
 
   // Store cleanup function
   scrollSyncCleanup = () => {
-    fidelityCol.removeEventListener('scroll', onFidelityScroll);
-    ynabCol.removeEventListener('scroll', onYnabScroll);
+    fidelityCol.removeEventListener('wheel', onWheel);
+    ynabCol.removeEventListener('wheel', onWheel);
   };
-
-  scrollSyncActive = true;
 }
 
