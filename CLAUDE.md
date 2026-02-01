@@ -174,9 +174,23 @@ Two-column layout with synchronized scrolling:
 - Drag handles for manual match adjustment
 
 ### Scroll Synchronization
-- Both columns scroll together by pixel distance
-- When shorter column hits bottom, longer column continues alone
-- On scroll up, the ahead column catches up before both resume together
+
+Uses wheel events so scrolling works on either column regardless of content height.
+
+**Scrolling DOWN:**
+- Both columns scroll together by the same delta
+- When shorter column (Fidelity) hits bottom, longer column (YNAB) continues alone
+
+**Scrolling UP:**
+- If YNAB column is scrolled further down than Fidelity:
+  - YNAB scrolls up first to "catch up" to Fidelity's position
+  - Once aligned, both columns scroll together again
+- This prevents jarring jumps when reversing scroll direction
+
+```
+DOWN: Both scroll together → Fidelity stops at bottom → YNAB continues alone
+UP:   YNAB catches up first → Once aligned → Both scroll together
+```
 
 ### Import Process
 1. User reviews matches, can skip transactions via X button
