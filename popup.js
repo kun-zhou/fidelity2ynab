@@ -427,6 +427,10 @@ async function importToYNAB() {
   }
 }
 
+// Track watermark info for display
+let lastWatermarkInfo = null;
+let transactionsBeforeWatermark = [];
+
 async function analyzeTransactions() {
   if (!ynabConfig?.token || !currentTransactions.length) return;
 
@@ -441,7 +445,19 @@ async function analyzeTransactions() {
     fetchDate.setDate(fetchDate.getDate() - 5);
 
     const ynabTxns = await api.getTransactionsSinceDate(ynabConfig.budgetId, ynabConfig.accountId, deduplicator.formatDate(fetchDate));
-    const result = deduplicator.findTransactionsToImport(currentTransactions, ynabTxns);
+
+    // Find watermark - transactions at or before this were already imported
+    lastWatermarkInfo = Watermark.findWatermarkIndex(ynabTxns, currentTransactions);
+
+    // Filter transactions: only process those AFTER the watermark
+    let transactionsToProcess = currentTransactions;
+    transactionsBeforeWatermark = [];
+    if (lastWatermarkInfo) {
+      transactionsBeforeWatermark = currentTransactions.slice(0, lastWatermarkInfo.fidelityIndex + 1);
+      transactionsToProcess = currentTransactions.slice(lastWatermarkInfo.fidelityIndex + 1);
+    }
+
+    const result = deduplicator.findTransactionsToImport(transactionsToProcess, ynabTxns);
 
     transactionsToImport = result.toImport;
     transactionsToUpdate = result.toUpdate;
@@ -449,14 +465,14 @@ async function analyzeTransactions() {
     transactionsMatched = result.matched;
     unmatchedYnab = result.unmatchedYnab || [];
 
-    displayTransactionsWithYnabPreview(result);
+    displayTransactionsWithYnabPreview({ ...result, beforeWatermark: transactionsBeforeWatermark, watermarkInfo: lastWatermarkInfo });
   } catch (error) {
     showStatus(`Analysis Error: ${error.message}`, "error");
   }
 }
 
 function displayTransactionsWithYnabPreview(analysisResult) {
-  const { toImport, toUpdate, pending, matched, unmatchedYnab } = analysisResult;
+  const { toImport, toUpdate, pending, matched, unmatchedYnab, beforeWatermark = [], watermarkInfo } = analysisResult;
 
   if (!currentTransactions.length) {
     resultsDiv.innerHTML = '<div class="text-center py-5 text-gray-500">No transactions found</div>';
@@ -472,6 +488,13 @@ function displayTransactionsWithYnabPreview(analysisResult) {
   let fidelityHtml = '', ynabHtml = '';
   let pendingClearedFidelity = [], pendingClearedYnab = [];
 
+  // Add beforeWatermark section at the top (collapsed)
+  if (beforeWatermark.length > 0) {
+    fidelityHtml += html.beforeWatermarkSection(beforeWatermark, watermarkInfo);
+    // Add empty spacer on YNAB side
+    ynabHtml += `<div class="text-xs text-gray-400 mb-2 py-1">${beforeWatermark.length} already imported</div>`;
+  }
+
   const flushCleared = () => {
     if (pendingClearedFidelity.length) {
       fidelityHtml += html.clearedSection(pendingClearedFidelity);
@@ -483,7 +506,13 @@ function displayTransactionsWithYnabPreview(analysisResult) {
     }
   };
 
-  currentTransactions.forEach((txn, index) => {
+  // Only process transactions AFTER the watermark
+  const transactionsToDisplay = beforeWatermark.length > 0
+    ? currentTransactions.slice(beforeWatermark.length)
+    : currentTransactions;
+
+  transactionsToDisplay.forEach((txn, idx) => {
+    const index = beforeWatermark.length + idx; // Maintain original index for skipping
     const key = JSON.stringify(txn);
     const toUpdateYnab = toUpdateMap.get(key);
     const pendingYnab = pendingMap.get(key);
@@ -530,7 +559,12 @@ function displayTransactionsWithYnabPreview(analysisResult) {
   const toCreateCount = toImport.filter(item => !item.suggestions.length).length;
   const toMatchCount = toImport.filter(item => item.suggestions.length).length + toUpdate.length;
 
-  summaryStats.innerHTML = html.matchSummaryText({ toCreate: toCreateCount, toMatch: toMatchCount, toSkip: skippedTransactions.size, beforeWatermark: 0 });
+  summaryStats.innerHTML = html.matchSummaryText({
+    toCreate: toCreateCount,
+    toMatch: toMatchCount,
+    toSkip: skippedTransactions.size,
+    beforeWatermark: beforeWatermark.length
+  });
   ynabImportBtn.disabled = !(toCreateCount || toMatchCount);
 
   resultsDiv.innerHTML = html.twoColumnContainer(fidelityHtml, ynabHtml);
@@ -563,7 +597,9 @@ function attachSkipButtonHandlers() {
       toUpdate: transactionsToUpdate,
       pending: transactionsPending,
       matched: transactionsMatched,
-      unmatchedYnab
+      unmatchedYnab,
+      beforeWatermark: transactionsBeforeWatermark,
+      watermarkInfo: lastWatermarkInfo
     });
   });
 }
