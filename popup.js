@@ -10,16 +10,21 @@
 
 // Global state
 let currentTransactions = [];
-let transactionsToImport = [];
-let transactionsToUpdate = [];
-let transactionsPending = [];
-let transactionsMatched = [];
-let unmatchedYnab = [];
 let ynabConfig = null;
-
-// Two-column UI state
 let skippedTransactions = new Set();
 let matchCanvas = null;
+
+// Analysis results (populated by analyzeTransactions)
+let analysisState = {
+  beforeWatermark: [],    // Transactions already imported (at/before watermark)
+  afterWatermark: [],     // Transactions to potentially import
+  toImport: [],           // New transactions to create
+  toUpdate: [],           // Transactions to match with existing YNAB
+  pending: [],            // Pending/uncleared matches
+  matched: [],            // Already cleared matches
+  unmatchedYnab: [],      // YNAB transactions with no Fidelity match
+  watermarkInfo: null     // { ynabTxn, fidelityIndex }
+};
 
 // Bank adapter
 const bankAdapter = FidelityAdapter;
@@ -334,6 +339,8 @@ async function importToYNAB() {
   const toMatch = [];
   const toSchedule = [];
 
+  const { toUpdate, matched, pending, unmatchedYnab } = analysisState;
+
   for (const { fidelityIndex, ynabId, type } of canvasMatches) {
     if (skippedTransactions.has(fidelityIndex)) continue;
     const bankTxn = currentTransactions[fidelityIndex];
@@ -346,7 +353,7 @@ async function importToYNAB() {
         toCreate.push(bankTxn);
       }
     } else if (type === 'match' && ynabId) {
-      const ynabTxn = [...transactionsToUpdate, ...transactionsMatched, ...transactionsPending]
+      const ynabTxn = [...toUpdate, ...matched, ...pending]
         .map(item => item.ynab)
         .find(y => y.id === ynabId) || unmatchedYnab.find(y => y.id === ynabId);
       if (ynabTxn?.cleared !== 'cleared') {
@@ -356,7 +363,7 @@ async function importToYNAB() {
   }
 
   // Add auto-matched transactions not in canvas
-  for (const { bank, ynab } of transactionsToUpdate) {
+  for (const { bank, ynab } of toUpdate) {
     const idx = currentTransactions.findIndex(t => JSON.stringify(t) === JSON.stringify(bank));
     if (!skippedTransactions.has(idx) && !toMatch.some(m => m.ynab.id === ynab.id)) {
       toMatch.push({ bank, ynab });
@@ -427,10 +434,6 @@ async function importToYNAB() {
   }
 }
 
-// Track watermark info for display
-let lastWatermarkInfo = null;
-let transactionsBeforeWatermark = [];
-
 async function analyzeTransactions() {
   if (!ynabConfig?.token || !currentTransactions.length) return;
 
@@ -446,33 +449,31 @@ async function analyzeTransactions() {
 
     const ynabTxns = await api.getTransactionsSinceDate(ynabConfig.budgetId, ynabConfig.accountId, deduplicator.formatDate(fetchDate));
 
-    // Find watermark - transactions at or before this were already imported
-    lastWatermarkInfo = Watermark.findWatermarkIndex(ynabTxns, currentTransactions);
+    // Find watermark and split transactions
+    const watermarkInfo = Watermark.findWatermarkIndex(ynabTxns, currentTransactions);
+    const splitIdx = watermarkInfo ? watermarkInfo.fidelityIndex + 1 : 0;
 
-    // Filter transactions: only process those AFTER the watermark
-    let transactionsToProcess = currentTransactions;
-    transactionsBeforeWatermark = [];
-    if (lastWatermarkInfo) {
-      transactionsBeforeWatermark = currentTransactions.slice(0, lastWatermarkInfo.fidelityIndex + 1);
-      transactionsToProcess = currentTransactions.slice(lastWatermarkInfo.fidelityIndex + 1);
-    }
+    analysisState.watermarkInfo = watermarkInfo;
+    analysisState.beforeWatermark = currentTransactions.slice(0, splitIdx);
+    analysisState.afterWatermark = currentTransactions.slice(splitIdx);
 
-    const result = deduplicator.findTransactionsToImport(transactionsToProcess, ynabTxns);
+    // Analyze only transactions after watermark
+    const result = deduplicator.findTransactionsToImport(analysisState.afterWatermark, ynabTxns);
 
-    transactionsToImport = result.toImport;
-    transactionsToUpdate = result.toUpdate;
-    transactionsPending = result.pending || [];
-    transactionsMatched = result.matched;
-    unmatchedYnab = result.unmatchedYnab || [];
+    analysisState.toImport = result.toImport;
+    analysisState.toUpdate = result.toUpdate;
+    analysisState.pending = result.pending || [];
+    analysisState.matched = result.matched;
+    analysisState.unmatchedYnab = result.unmatchedYnab || [];
 
-    displayTransactionsWithYnabPreview({ ...result, beforeWatermark: transactionsBeforeWatermark, watermarkInfo: lastWatermarkInfo });
+    displayTransactionsWithYnabPreview();
   } catch (error) {
     showStatus(`Analysis Error: ${error.message}`, "error");
   }
 }
 
-function displayTransactionsWithYnabPreview(analysisResult) {
-  const { toImport, toUpdate, pending, matched, unmatchedYnab, beforeWatermark = [], watermarkInfo } = analysisResult;
+function displayTransactionsWithYnabPreview() {
+  const { toImport, toUpdate, pending, matched, unmatchedYnab, beforeWatermark, afterWatermark, watermarkInfo } = analysisState;
 
   if (!currentTransactions.length) {
     resultsDiv.innerHTML = '<div class="text-center py-5 text-gray-500">No transactions found</div>';
@@ -506,13 +507,11 @@ function displayTransactionsWithYnabPreview(analysisResult) {
     }
   };
 
-  // Only process transactions AFTER the watermark
-  const transactionsToDisplay = beforeWatermark.length > 0
-    ? currentTransactions.slice(beforeWatermark.length)
-    : currentTransactions;
+  // Only display transactions AFTER the watermark
+  const transactionsToDisplay = afterWatermark || currentTransactions;
 
   transactionsToDisplay.forEach((txn, idx) => {
-    const index = beforeWatermark.length + idx; // Maintain original index for skipping
+    const index = beforeWatermark.length + idx; // Maintain original index for skipping/import
     const key = JSON.stringify(txn);
     const toUpdateYnab = toUpdateMap.get(key);
     const pendingYnab = pendingMap.get(key);
@@ -591,16 +590,7 @@ function attachSkipButtonHandlers() {
     if (isNaN(index)) return;
 
     skippedTransactions.has(index) ? skippedTransactions.delete(index) : skippedTransactions.add(index);
-
-    displayTransactionsWithYnabPreview({
-      toImport: transactionsToImport,
-      toUpdate: transactionsToUpdate,
-      pending: transactionsPending,
-      matched: transactionsMatched,
-      unmatchedYnab,
-      beforeWatermark: transactionsBeforeWatermark,
-      watermarkInfo: lastWatermarkInfo
-    });
+    displayTransactionsWithYnabPreview();
   });
 }
 
