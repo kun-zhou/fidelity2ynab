@@ -28,7 +28,7 @@ let scrapeBtn,
   resultsDiv,
   skipCoreFundsCheckbox,
   hideClearedCheckbox;
-let ynabStatus, ynabStatusText, configureYnabBtn;
+let ynabStatusText, configureYnabBtn, summaryStats, ynabImportBtn;
 let ynabModal, ynabTokenInput, ynabBudgetSelect, ynabAccountSelect;
 let saveYnabConfigBtn, cancelYnabConfigBtn;
 let alertModal, alertTitle, alertMessage, alertOkBtn;
@@ -47,8 +47,9 @@ document.addEventListener("DOMContentLoaded", () => {
   if (!resultsDiv) throw new Error("results element not found");
 
   // YNAB elements
-  ynabStatus = document.getElementById("ynabStatus");
   ynabStatusText = document.getElementById("ynabStatusText");
+  summaryStats = document.getElementById("summaryStats");
+  ynabImportBtn = document.getElementById("ynabImportBtn");
   configureYnabBtn = document.getElementById("configureYnabBtn");
   ynabModal = document.getElementById("ynabModal");
   ynabTokenInput = document.getElementById("ynabToken");
@@ -57,8 +58,8 @@ document.addEventListener("DOMContentLoaded", () => {
   saveYnabConfigBtn = document.getElementById("saveYnabConfig");
   cancelYnabConfigBtn = document.getElementById("cancelYnabConfig");
 
-  if (!ynabStatus) throw new Error("ynabStatus element not found");
   if (!ynabStatusText) throw new Error("ynabStatusText element not found");
+  if (!summaryStats) throw new Error("summaryStats element not found");
   if (!ynabModal) throw new Error("ynabModal element not found");
   if (!ynabTokenInput) throw new Error("ynabToken element not found");
   if (!ynabBudgetSelect) throw new Error("ynabBudget element not found");
@@ -406,10 +407,8 @@ async function loadYnabConfig() {
     const config = await getStorageValue("ynabConfig");
     if (config) {
       ynabConfig = config;
-      updateYnabStatus();
-    } else {
-      ynabStatus.classList.remove("hidden");
     }
+    updateYnabStatus();
   } catch (error) {
     console.error("Error loading YNAB config:", error);
   }
@@ -417,19 +416,14 @@ async function loadYnabConfig() {
 
 // Update YNAB status display
 function updateYnabStatus() {
-  if (
-    ynabConfig &&
-    ynabConfig.token &&
-    ynabConfig.budgetId &&
-    ynabConfig.accountId
-  ) {
+  if (ynabConfig && ynabConfig.token && ynabConfig.budgetId && ynabConfig.accountId) {
     ynabStatusText.classList.remove("text-gray-500");
     ynabStatusText.classList.add("text-green-600");
-    ynabStatusText.textContent = `YNAB Status: Connected to ${ynabConfig.budgetName} → ${ynabConfig.accountName}`;
+    ynabStatusText.textContent = "Connected";
   } else {
     ynabStatusText.classList.remove("text-green-600");
     ynabStatusText.classList.add("text-gray-500");
-    ynabStatusText.textContent = "Not Connected";
+    ynabStatusText.textContent = "Configure";
   }
 }
 
@@ -846,10 +840,20 @@ function displayTransactionsWithYnabPreview(analysisResult) {
   const toCreate = toImport.filter(item => item.suggestions.length === 0).length;
   const toMatch = toImport.filter(item => item.suggestions.length > 0).length + toUpdate.length;
   const toSkip = skippedTransactions.size;
-  const summaryHtml = html.matchSummary({ toCreate, toMatch, toSkip, beforeWatermark: 0 });
+
+  // Update summary stats in action bar
+  summaryStats.innerHTML = html.matchSummaryText({ toCreate, toMatch, toSkip, beforeWatermark: 0 });
+
+  // Show/hide import button based on actions available
+  const hasActions = toCreate > 0 || toMatch > 0;
+  if (hasActions) {
+    ynabImportBtn.classList.remove("hidden");
+  } else {
+    ynabImportBtn.classList.add("hidden");
+  }
 
   // Render two-column layout
-  resultsDiv.innerHTML = html.twoColumnContainer(fidelityHtml, ynabHtml, summaryHtml);
+  resultsDiv.innerHTML = html.twoColumnContainer(fidelityHtml, ynabHtml);
 
   // Initialize match canvas
   if (matchCanvas) matchCanvas.destroy();
@@ -866,12 +870,6 @@ function displayTransactionsWithYnabPreview(analysisResult) {
 
   // Attach skip button handlers
   attachSkipButtonHandlers();
-
-  // Attach import button handler
-  const importBtn = document.getElementById("ynabImportBtn");
-  if (importBtn) {
-    importBtn.addEventListener("click", importToYNAB);
-  }
 }
 
 // Handle skip button clicks
