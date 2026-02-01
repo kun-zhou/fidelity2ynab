@@ -665,15 +665,16 @@ async function importToYNAB() {
       if (!bankDate) {
         throw new Error(`Missing date for matched transaction: ${bank.description}`);
       }
-      const updates = {
-        account_id: ynabConfig.accountId,
-        cleared: 'cleared',
-        date: bankDate
-      };
+      // For transfers, only update cleared status (can't change date on linked transactions)
+      const updates = ynab.transfer_account_id
+        ? { cleared: 'cleared' }
+        : { cleared: 'cleared', date: bankDate };
       await api.updateTransaction(ynabConfig.budgetId, ynab.id, updates);
       updatedCount++;
-      // Track this as last processed (updates come after creates, so this will be most recent)
-      lastProcessedTxn = { txn: bank, ynabId: ynab.id, existingMemo: ynab.memo };
+      // Track this as last processed (but skip transfers for watermark since we can't update their memo reliably)
+      if (!ynab.transfer_account_id) {
+        lastProcessedTxn = { txn: bank, ynabId: ynab.id, existingMemo: ynab.memo };
+      }
     }
 
     // Add watermark to the last successfully processed transaction
