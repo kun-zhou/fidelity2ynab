@@ -630,13 +630,30 @@ async function importToYNAB() {
     const api = new YNABApi(ynabConfig.token);
     let createdCount = 0, updatedCount = 0, scheduledCount = 0;
 
-    // Create new cleared transactions (with watermark on last one)
+    // Find the most recent non-scheduled transaction for watermark
+    const allNonScheduled = [
+      ...toCreate.map(txn => ({ txn, type: 'create' })),
+      ...toMatch.map(({ bank }) => ({ txn: bank, type: 'match' }))
+    ];
+    let watermarkTxn = null;
+    if (allNonScheduled.length > 0) {
+      watermarkTxn = allNonScheduled.reduce((latest, curr) => {
+        const latestDate = bankAdapter.parseDate(latest.txn.date);
+        const currDate = bankAdapter.parseDate(curr.txn.date);
+        return currDate > latestDate ? curr : latest;
+      });
+    }
+
+    // Create new cleared transactions
     if (toCreate.length > 0) {
-      const ynabTxns = toCreate.map((txn, idx) => {
+      const ynabTxns = toCreate.map((txn) => {
         const ynabTxn = bankAdapter.toYNABTransaction(txn, ynabConfig.accountId);
-        // Add watermark to the last non-processing transaction
-        if (idx === toCreate.length - 1) {
+        // Add watermark to most recent transaction
+        if (watermarkTxn && watermarkTxn.type === 'create' && watermarkTxn.txn === txn) {
           ynabTxn.memo = Watermark.createMemo(txn, ynabTxn.memo);
+        }
+        if (!ynabTxn.date) {
+          throw new Error(`Missing date for transaction: ${txn.description}`);
         }
         return ynabTxn;
       });
@@ -653,13 +670,17 @@ async function importToYNAB() {
 
     // Update matched transactions to cleared
     for (const { bank, ynab } of toMatch) {
-      // For transfers, keep YNAB's date; otherwise use bank date
+      const bankDate = bankAdapter.parseDate(bank.date);
+      if (!bankDate) {
+        throw new Error(`Missing date for matched transaction: ${bank.description}`);
+      }
       const updates = {
+        account_id: ynabConfig.accountId,
         cleared: 'cleared',
-        date: ynab.transfer_account_id ? ynab.date : bankAdapter.parseDate(bank.date)
+        date: bankDate
       };
-      // Add watermark if this is the last transaction and we didn't create any
-      if (toCreate.length === 0 && bank === toMatch[toMatch.length - 1].bank) {
+      // Add watermark to most recent transaction
+      if (watermarkTxn && watermarkTxn.type === 'match' && watermarkTxn.txn === bank) {
         updates.memo = Watermark.createMemo(bank, ynab.memo);
       }
       await api.updateTransaction(ynabConfig.budgetId, ynab.id, updates);
