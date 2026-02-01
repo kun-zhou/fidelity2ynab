@@ -759,10 +759,25 @@ function displayTransactionsWithYnabPreview(analysisResult) {
 
   // Initialize matches for canvas
   const initialMatches = [];
+  const hideCleared = hideClearedCheckbox && hideClearedCheckbox.checked;
 
-  // Build Fidelity column HTML
+  // Build both columns in parallel, grouping consecutive cleared transactions
   let fidelityHtml = '';
-  const clearedTxns = [];
+  let ynabHtml = '';
+  let pendingClearedFidelity = [];
+  let pendingClearedYnab = [];
+
+  // Helper to flush accumulated cleared transactions as collapsible section
+  const flushClearedSections = () => {
+    if (pendingClearedFidelity.length > 0 && hideCleared) {
+      fidelityHtml += html.clearedSection(pendingClearedFidelity);
+      pendingClearedFidelity = [];
+    }
+    if (pendingClearedYnab.length > 0 && hideCleared) {
+      ynabHtml += html.ynabClearedSection(pendingClearedYnab);
+      pendingClearedYnab = [];
+    }
+  };
 
   currentTransactions.forEach((txn, index) => {
     const txnKey = JSON.stringify(txn);
@@ -773,15 +788,12 @@ function displayTransactionsWithYnabPreview(analysisResult) {
 
     const isSkipped = skippedTransactions.has(index);
     let matchState = '';
+    let isCleared = false;
 
     if (matchedYnab) {
       matchState = 'matched';
+      isCleared = true;
       initialMatches.push({ fidelityIndex: index, ynabId: matchedYnab.id, type: 'match' });
-      // Collect for collapsed section if hiding cleared
-      if (hideClearedCheckbox && hideClearedCheckbox.checked) {
-        clearedTxns.push({ txn, index, ynab: matchedYnab });
-        return;
-      }
     } else if (toUpdateYnab) {
       matchState = 'matched';
       initialMatches.push({ fidelityIndex: index, ynabId: toUpdateYnab.id, type: 'match' });
@@ -790,7 +802,6 @@ function displayTransactionsWithYnabPreview(analysisResult) {
       initialMatches.push({ fidelityIndex: index, ynabId: pendingYnab.id, type: 'match' });
     } else if (suggestions !== undefined) {
       matchState = 'new';
-      // Auto-match if only one suggestion
       if (suggestions.length === 1) {
         initialMatches.push({ fidelityIndex: index, ynabId: suggestions[0].id, type: 'match' });
       } else if (suggestions.length === 0) {
@@ -798,50 +809,33 @@ function displayTransactionsWithYnabPreview(analysisResult) {
       }
     }
 
-    fidelityHtml += html.fidelityItem(txn, index, isSkipped, matchState);
-  });
+    if (isCleared && hideCleared) {
+      // Accumulate cleared transactions
+      pendingClearedFidelity.push({ txn, index, ynab: matchedYnab });
+      pendingClearedYnab.push({ ynab: matchedYnab, fidelityIndex: index });
+    } else {
+      // Flush any accumulated cleared transactions first
+      flushClearedSections();
 
-  // Add collapsed cleared section at top if any
-  if (clearedTxns.length > 0) {
-    fidelityHtml = html.clearedSection(clearedTxns) + fidelityHtml;
-  }
+      // Render Fidelity item
+      fidelityHtml += html.fidelityItem(txn, index, isSkipped, matchState);
 
-  // Build YNAB column HTML - in same order as Fidelity column for line alignment
-  let ynabHtml = '';
-  const clearedYnabForSection = [];
-
-  // Iterate in same order as Fidelity column
-  currentTransactions.forEach((txn, index) => {
-    const txnKey = JSON.stringify(txn);
-    const suggestions = toImportMap.get(txnKey);
-    const toUpdateYnab = toUpdateMap.get(txnKey);
-    const pendingYnab = pendingMap.get(txnKey);
-    const matchedYnab = matchedMap.get(txnKey);
-
-    const isSkipped = skippedTransactions.has(index);
-
-    if (matchedYnab) {
-      // Already cleared - collect for collapsed section if hiding
-      if (hideClearedCheckbox && hideClearedCheckbox.checked) {
-        clearedYnabForSection.push({ ynab: matchedYnab, fidelityIndex: index });
-        return;
+      // Render corresponding YNAB item
+      if (matchedYnab && !hideCleared) {
+        ynabHtml += html.ynabItem(matchedYnab, 'matched', index);
+      } else if (toUpdateYnab) {
+        ynabHtml += html.ynabItem(toUpdateYnab, 'matched', index);
+      } else if (pendingYnab) {
+        ynabHtml += html.ynabItem(pendingYnab, 'matched', index);
+      } else if (suggestions !== undefined) {
+        const formattedPayee = bankAdapter.formatPayeeName(txn.description);
+        ynabHtml += html.createNewTarget(index, isSkipped ? null : txn, formattedPayee);
       }
-      ynabHtml += html.ynabItem(matchedYnab, 'matched', index);
-    } else if (toUpdateYnab) {
-      ynabHtml += html.ynabItem(toUpdateYnab, 'matched', index);
-    } else if (pendingYnab) {
-      ynabHtml += html.ynabItem(pendingYnab, 'matched', index);
-    } else if (suggestions !== undefined) {
-      // New transaction - show "Create New" target
-      const formattedPayee = bankAdapter.formatPayeeName(txn.description);
-      ynabHtml += html.createNewTarget(index, isSkipped ? null : txn, formattedPayee);
     }
   });
 
-  // Add cleared section at top if hiding cleared
-  if (clearedYnabForSection.length > 0) {
-    ynabHtml = html.ynabClearedSection(clearedYnabForSection) + ynabHtml;
-  }
+  // Flush any remaining cleared transactions at the end
+  flushClearedSections();
 
   // Render unmatched YNAB transactions at the bottom
   unmatchedYnab.forEach(ynab => {
