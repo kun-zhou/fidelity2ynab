@@ -450,12 +450,15 @@ async function analyzeTransactions() {
     const ynabTxns = await api.getTransactionsSinceDate(ynabConfig.budgetId, ynabConfig.accountId, deduplicator.formatDate(fetchDate));
 
     // Find watermark and split transactions
+    // Fidelity shows newest first (index 0 = newest), so:
+    // - afterWatermark = indices BEFORE watermark index (newer, to process)
+    // - beforeWatermark = watermark index onwards (older, already imported)
     const watermarkInfo = Watermark.findWatermarkIndex(ynabTxns, currentTransactions);
-    const splitIdx = watermarkInfo ? watermarkInfo.fidelityIndex + 1 : 0;
+    const splitIdx = watermarkInfo ? watermarkInfo.fidelityIndex : currentTransactions.length;
 
     analysisState.watermarkInfo = watermarkInfo;
-    analysisState.beforeWatermark = currentTransactions.slice(0, splitIdx);
-    analysisState.afterWatermark = currentTransactions.slice(splitIdx);
+    analysisState.afterWatermark = currentTransactions.slice(0, splitIdx);
+    analysisState.beforeWatermark = currentTransactions.slice(splitIdx);
 
     // Analyze only transactions after watermark
     const result = deduplicator.findTransactionsToImport(analysisState.afterWatermark, ynabTxns);
@@ -507,11 +510,11 @@ function displayTransactionsWithYnabPreview() {
     }
   };
 
-  // Only display transactions AFTER the watermark
-  const transactionsToDisplay = afterWatermark || currentTransactions;
+  // Only display transactions AFTER the watermark (newer ones, at start of array)
+  const transactionsToDisplay = afterWatermark?.length ? afterWatermark : currentTransactions;
 
   transactionsToDisplay.forEach((txn, idx) => {
-    const index = beforeWatermark.length + idx; // Maintain original index for skipping/import
+    const index = idx; // Index in currentTransactions (afterWatermark is at start)
     const key = JSON.stringify(txn);
     const toUpdateYnab = toUpdateMap.get(key);
     const pendingYnab = pendingMap.get(key);
