@@ -26,8 +26,7 @@ const bankAdapter = FidelityAdapter;
 let scrapeBtn,
   toastContainer,
   resultsDiv,
-  skipCoreFundsCheckbox,
-  hideClearedCheckbox;
+  skipCoreFundsCheckbox;
 let ynabStatusText, configureYnabBtn, summaryStats, ynabImportBtn;
 let ynabModal, ynabTokenInput, ynabBudgetSelect, ynabAccountSelect;
 let saveYnabConfigBtn, cancelYnabConfigBtn;
@@ -41,7 +40,6 @@ document.addEventListener("DOMContentLoaded", () => {
   toastContainer = document.getElementById("toastContainer");
   resultsDiv = document.getElementById("results");
   skipCoreFundsCheckbox = document.getElementById("skipCoreFunds");
-  hideClearedCheckbox = document.getElementById("hideCleared");
 
   if (!toastContainer) throw new Error("toastContainer element not found");
   if (!resultsDiv) throw new Error("results element not found");
@@ -94,9 +92,6 @@ document.addEventListener("DOMContentLoaded", () => {
       console.error("Error loading settings:", error);
       // Default to true if storage fails
       skipCoreFundsCheckbox.checked = true;
-      if (hideClearedCheckbox) {
-        hideClearedCheckbox.checked = true;
-      }
     });
 
     // Save setting when changed
@@ -105,28 +100,6 @@ document.addEventListener("DOMContentLoaded", () => {
         await setStorageValue("skipCoreFunds", skipCoreFundsCheckbox.checked);
       } catch (error) {
         console.error("Error saving settings:", error);
-      }
-    });
-  }
-
-  // Save hide cleared setting and re-render when changed
-  if (hideClearedCheckbox) {
-    hideClearedCheckbox.addEventListener("change", async () => {
-      try {
-        await setStorageValue("hideCleared", hideClearedCheckbox.checked);
-        // Re-render the display if we have transactions
-        if (currentTransactions.length > 0 && ynabConfig && ynabConfig.token) {
-          displayTransactionsWithYnabPreview({
-            toImport: transactionsToImport,
-            toUpdate: transactionsToUpdate,
-            pending: transactionsPending,
-            matched: transactionsMatched,
-            unmatchedYnab: [],
-            failedTransactions: [],
-          });
-        }
-      } catch (error) {
-        console.error("Error saving hide cleared setting:", error);
       }
     });
   }
@@ -393,11 +366,6 @@ async function loadSettings() {
   // Default to true if not set
   if (skipCoreFundsCheckbox) {
     skipCoreFundsCheckbox.checked = settings.skipCoreFunds !== false;
-  }
-
-  // Load hide cleared (default to true)
-  if (hideClearedCheckbox) {
-    hideClearedCheckbox.checked = settings.hideCleared !== false;
   }
 }
 
@@ -753,7 +721,7 @@ function displayTransactionsWithYnabPreview(analysisResult) {
 
   // Initialize matches for canvas
   const initialMatches = [];
-  const hideCleared = hideClearedCheckbox && hideClearedCheckbox.checked;
+  const hideCleared = true; // Always collapse cleared transactions
 
   // Build both columns in parallel, grouping consecutive cleared transactions
   let fidelityHtml = '';
