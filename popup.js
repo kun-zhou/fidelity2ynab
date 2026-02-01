@@ -149,14 +149,18 @@ async function analyzeAndDisplay() {
 
     const fetchDate = new Date(earliestDate);
     fetchDate.setDate(fetchDate.getDate() - 5);
-    const ynabTxns = await api.getTransactionsSinceDate(
-      ynabConfig.budgetId,
-      ynabConfig.accountId,
-      deduplicator.formatDate(fetchDate)
-    );
+
+    // Fetch both regular and scheduled transactions
+    const [ynabTxns, scheduledTxns] = await Promise.all([
+      api.getTransactionsSinceDate(ynabConfig.budgetId, ynabConfig.accountId, deduplicator.formatDate(fetchDate)),
+      api.getScheduledTransactions(ynabConfig.budgetId)
+    ]);
+
+    // Filter scheduled transactions to this account
+    const accountScheduled = scheduledTxns.filter(t => t.account_id === ynabConfig.accountId);
 
     // Use service to analyze
-    analysisResult = txnService.analyze(rawScrapedTxns, ynabTxns);
+    analysisResult = txnService.analyze(rawScrapedTxns, ynabTxns, accountScheduled);
     renderTransactions();
   } catch (error) {
     showStatus(`Analysis Error: ${error.message}`, "error");
@@ -196,6 +200,12 @@ function renderTransactions() {
     if (txn.state === 'cleared') {
       // Accumulate consecutive cleared for collapsing
       pendingCleared.push(txn);
+    } else if (txn.state === 'scheduled') {
+      // Show scheduled transactions (matched to YNAB scheduled)
+      flushCleared();
+      fidelityHtml += html.fidelityItem(txn.fidelity, txn.index, false, 'scheduled');
+      ynabHtml += html.scheduledItem(txn.scheduledYnab, txn.index);
+      initialMatches.push({ fidelityIndex: txn.index, ynabId: txn.scheduledYnab.id, type: 'scheduled' });
     } else {
       flushCleared();
       fidelityHtml += html.fidelityItem(txn.fidelity, txn.index, isSkipped, txn.state === 'new' ? 'new' : 'matched');
