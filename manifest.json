@@ -26,5 +26,11 @@
   "host_permissions": [
     "https://digital.fidelity.com/*",
     "https://api.ynab.com/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["https://digital.fidelity.com/*"],
+      "js": ["browser-polyfill.min.js", "lib/banks/fidelity/scraper.js", "content.js"]
+    }
   ]
 }

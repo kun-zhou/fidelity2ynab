@@ -11,6 +11,14 @@ let transactionsMatched = [];
 let unmatchedYnab = [];
 let ynabConfig = null;
 
+// Two-column UI state
+let skippedTransactions = new Set();
+let matchCanvas = null;
+let beforeWatermarkTxns = [];
+let afterWatermarkTxns = [];
+let watermarkInfo = null;
+let allYnabTxns = [];
+
 // Bank adapter (Fidelity)
 const bankAdapter = FidelityAdapter;
 
@@ -28,8 +36,6 @@ let confirmModal, confirmTitle, confirmMessage, confirmOkBtn, confirmCancelBtn;
 
 // Wait for DOM to be fully loaded
 document.addEventListener("DOMContentLoaded", () => {
-  console.log("Popup loaded");
-
   // DOM elements - throw if critical elements are missing
   scrapeBtn = document.getElementById("scrapeBtn");
   toastContainer = document.getElementById("toastContainer");
@@ -96,10 +102,6 @@ document.addEventListener("DOMContentLoaded", () => {
     skipCoreFundsCheckbox.addEventListener("change", async () => {
       try {
         await setStorageValue("skipCoreFunds", skipCoreFundsCheckbox.checked);
-        console.log(
-          "Saved setting - skipCoreFunds:",
-          skipCoreFundsCheckbox.checked
-        );
       } catch (error) {
         console.error("Error saving settings:", error);
       }
@@ -111,10 +113,6 @@ document.addEventListener("DOMContentLoaded", () => {
     hideClearedCheckbox.addEventListener("change", async () => {
       try {
         await setStorageValue("hideCleared", hideClearedCheckbox.checked);
-        console.log(
-          "Saved setting - hideCleared:",
-          hideClearedCheckbox.checked
-        );
         // Re-render the display if we have transactions
         if (currentTransactions.length > 0 && ynabConfig && ynabConfig.token) {
           displayTransactionsWithYnabPreview({
@@ -137,10 +135,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Event listeners
   if (scrapeBtn) {
-    scrapeBtn.addEventListener("click", () => {
-      console.log("Scrape button clicked");
-      scrapeTransactions();
-    });
+    scrapeBtn.addEventListener("click", scrapeTransactions);
   }
   if (!configureYnabBtn) throw new Error("configureYnabBtn element not found");
   if (!saveYnabConfigBtn) throw new Error("saveYnabConfigBtn element not found");
@@ -172,8 +167,6 @@ document.addEventListener("DOMContentLoaded", () => {
       await loadYnabAccounts(token, budgetId);
     }
   });
-
-  console.log("Event listeners attached");
 });
 
 async function scrapeTransactions() {
@@ -198,18 +191,16 @@ async function scrapeTransactions() {
     try {
       await browser.scripting.executeScript({
         target: { tabId: tab.id },
-        files: ["lib/banks/fidelity/scraper.js", "content.js"],
+        files: ["browser-polyfill.min.js", "lib/banks/fidelity/scraper.js", "content.js"],
       });
     } catch (e) {
       // Script might already be injected, continue
-      console.log("Content script already injected or failed to inject:", e);
     }
 
     // Send message to content script with settings
     const skipCoreFunds = skipCoreFundsCheckbox
       ? skipCoreFundsCheckbox.checked
       : true;
-    console.log("Scraping with skipCoreFunds:", skipCoreFunds);
 
     const response = await browser.tabs.sendMessage(tab.id, {
       action: "scrapeTransactions",
@@ -286,10 +277,7 @@ function displayTransactions(transactions) {
       </div>
     `;
     // Re-attach event listener
-    document.getElementById("scrapeBtn").addEventListener("click", () => {
-      console.log("Scrape button clicked");
-      scrapeTransactions();
-    });
+    document.getElementById("scrapeBtn").addEventListener("click", scrapeTransactions);
     return;
   }
 
@@ -404,19 +392,11 @@ async function loadSettings() {
   // Default to true if not set
   if (skipCoreFundsCheckbox) {
     skipCoreFundsCheckbox.checked = settings.skipCoreFunds !== false;
-    console.log(
-      "Loaded setting - skipCoreFunds:",
-      skipCoreFundsCheckbox.checked
-    );
   }
 
   // Load hide cleared (default to true)
   if (hideClearedCheckbox) {
     hideClearedCheckbox.checked = settings.hideCleared !== false;
-    console.log(
-      "Loaded setting - hideCleared:",
-      hideClearedCheckbox.checked
-    );
   }
 }
 
@@ -428,7 +408,7 @@ async function loadYnabConfig() {
       ynabConfig = config;
       updateYnabStatus();
     } else {
-      ynabStatus.style.display = "flex";
+      ynabStatus.classList.remove("hidden");
     }
   } catch (error) {
     console.error("Error loading YNAB config:", error);
@@ -471,12 +451,12 @@ function openYnabConfig() {
       });
     }
   }
-  ynabModal.style.display = "flex";
+  ynabModal.classList.remove("hidden");
 }
 
 // Close YNAB modal
 function closeYnabModal() {
-  ynabModal.style.display = "none";
+  ynabModal.classList.add("hidden");
 }
 
 // Show alert modal
@@ -484,12 +464,12 @@ function showAlert(title, message) {
   alertTitle.textContent = title;
   // Replace \n with <br> for proper line breaks in HTML
   alertMessage.innerHTML = message.replace(/\n/g, "<br>");
-  alertModal.style.display = "flex";
+  alertModal.classList.remove("hidden");
 }
 
 // Close alert modal
 function closeAlertModal() {
-  alertModal.style.display = "none";
+  alertModal.classList.add("hidden");
 }
 
 // Show confirmation modal and return a Promise that resolves to true/false
@@ -497,11 +477,11 @@ function showConfirm(title, messageHtml) {
   return new Promise((resolve) => {
     confirmTitle.textContent = title;
     confirmMessage.innerHTML = messageHtml;
-    confirmModal.style.display = "flex";
+    confirmModal.classList.remove("hidden");
 
     // Handle OK button
     const handleOk = () => {
-      confirmModal.style.display = "none";
+      confirmModal.classList.add("hidden");
       confirmOkBtn.removeEventListener("click", handleOk);
       confirmCancelBtn.removeEventListener("click", handleCancel);
       resolve(true);
@@ -509,7 +489,7 @@ function showConfirm(title, messageHtml) {
 
     // Handle Cancel button
     const handleCancel = () => {
-      confirmModal.style.display = "none";
+      confirmModal.classList.add("hidden");
       confirmOkBtn.removeEventListener("click", handleOk);
       confirmCancelBtn.removeEventListener("click", handleCancel);
       resolve(false);
@@ -535,8 +515,6 @@ async function loadYnabBudgets(token) {
       option.textContent = budget.name;
       ynabBudgetSelect.appendChild(option);
     });
-
-    console.log("Loaded budgets:", budgets.length);
   } catch (error) {
     console.error("Error loading budgets:", error);
     showStatus(`YNAB Error: ${error.message}`, "error");
@@ -565,8 +543,6 @@ async function loadYnabAccounts(token, budgetId) {
       option.textContent = `${account.name}`;
       ynabAccountSelect.appendChild(option);
     });
-
-    console.log("Loaded accounts:", openAccounts.length);
   } catch (error) {
     console.error("Error loading accounts:", error);
     showStatus(`YNAB Error: ${error.message}`, "error");
@@ -602,7 +578,6 @@ async function saveYnabConfig() {
 
   try {
     await setStorageValue("ynabConfig", ynabConfig);
-    console.log("YNAB config saved");
     updateYnabStatus();
     closeYnabModal();
     showStatus("YNAB configuration saved!", "success");
@@ -620,98 +595,56 @@ async function importToYNAB() {
     return;
   }
 
-  if (transactionsToImport.length === 0 && transactionsToUpdate.length === 0) {
-    showStatus("No transactions to import or update", "info");
-    return;
-  }
+  // Get matches from canvas
+  const canvasMatches = matchCanvas ? matchCanvas.getMatches() : [];
 
-  // Check if all suggestion dropdowns have a selection
-  const dropdowns = document.querySelectorAll(".suggestion-dropdown");
-  const unselectedDropdowns = [];
-  dropdowns.forEach((dropdown) => {
-    if (!dropdown.value || dropdown.value === "") {
-      unselectedDropdowns.push(dropdown);
-    }
-  });
+  // Separate into creates and matches, excluding skipped
+  const toCreate = [];
+  const toMatch = [];
+  const toSchedule = []; // Processing transactions
 
-  if (unselectedDropdowns.length > 0) {
-    showAlert(
-      "Selection Required",
-      `Please select an action for all ${
-        unselectedDropdowns.length
-      } transaction${
-        unselectedDropdowns.length > 1 ? "s" : ""
-      } with matching suggestions before importing.\n\nFor each "MATCH AVAILABLE" transaction, choose either "Create new transaction" or match with an existing YNAB transaction.`
-    );
-    // Highlight the first unselected dropdown button
-    if (unselectedDropdowns[0]) {
-      const txnIndex = unselectedDropdowns[0].getAttribute("data-txn-index");
-      const dropdownBtn = document.querySelector(
-        `.custom-dropdown-btn[data-txn-index="${txnIndex}"]`
-      );
-      if (dropdownBtn) {
-        dropdownBtn.style.border = "0.125rem solid #d32f2f";
-        dropdownBtn.scrollIntoView({
-          behavior: "smooth",
-          block: "center",
-        });
-        setTimeout(() => {
-          dropdownBtn.style.border = "0.0625rem solid #d1d5db";
-        }, 3000);
+  for (const match of canvasMatches) {
+    const { fidelityIndex, ynabId, type } = match;
+
+    // Skip if user marked as skipped
+    if (skippedTransactions.has(fidelityIndex)) continue;
+
+    const bankTxn = currentTransactions[fidelityIndex];
+    if (!bankTxn) continue;
+
+    // Check if this is a processing transaction
+    const isProcessing = bankAdapter.isProcessing(bankTxn);
+
+    if (type === 'create') {
+      if (isProcessing) {
+        toSchedule.push(bankTxn);
+      } else {
+        toCreate.push(bankTxn);
+      }
+    } else if (type === 'match' && ynabId) {
+      // Find the YNAB transaction
+      const ynabTxn = [...transactionsToUpdate, ...transactionsMatched, ...transactionsPending]
+        .map(item => item.ynab)
+        .find(y => y.id === ynabId) || unmatchedYnab.find(y => y.id === ynabId);
+
+      if (ynabTxn && ynabTxn.cleared !== 'cleared') {
+        toMatch.push({ bank: bankTxn, ynab: ynabTxn });
       }
     }
-    return;
   }
 
-  // Check for unmatched YNAB transactions and confirm with user
-  // First, collect all YNAB IDs that the user has selected to match
-  const userSelectedYnabIds = new Set();
-  const allDropdowns = document.querySelectorAll(".suggestion-dropdown");
-  allDropdowns.forEach((dropdown) => {
-    const selectedValue = dropdown.value;
-    if (
-      selectedValue &&
-      selectedValue !== "" &&
-      selectedValue !== "__CREATE_NEW__"
-    ) {
-      userSelectedYnabIds.add(selectedValue);
+  // Also add auto-matched toUpdate transactions not in canvas
+  for (const { bank, ynab } of transactionsToUpdate) {
+    const fidelityIndex = currentTransactions.findIndex(t => JSON.stringify(t) === JSON.stringify(bank));
+    if (skippedTransactions.has(fidelityIndex)) continue;
+    if (!toMatch.some(m => m.ynab.id === ynab.id)) {
+      toMatch.push({ bank, ynab });
     }
-  });
+  }
 
-  // Filter out YNAB transactions that the user has manually selected to match
-  const stillUnmatched = unmatchedYnab.filter(
-    (txn) => !userSelectedYnabIds.has(txn.id)
-  );
-
-  if (stillUnmatched && stillUnmatched.length > 0) {
-    const unmatchedList = stillUnmatched
-      .map(
-        (txn) =>
-          `<li>${txn.date}: ${txn.payee_name || "Unknown"} - $${(
-            txn.amount / 1000
-          ).toFixed(2)} (${txn.cleared})</li>`
-      )
-      .join("");
-
-    const confirmed = await showConfirm(
-      "Unmatched YNAB Transactions",
-      `<p style="margin-bottom: 0.75rem;">The following ${
-        stillUnmatched.length
-      } YNAB transaction${
-        stillUnmatched.length > 1 ? "s" : ""
-      } could not be automatically matched with ${bankAdapter.bankName} transactions:</p>
-      <ul style="margin: 0 0 0.75rem 1.25rem; padding: 0; max-height: 12.5rem; overflow-y: auto;">
-        ${unmatchedList}
-      </ul>
-      <p style="margin: 0;">Do you want to continue with the import?</p>`
-    );
-
-    if (!confirmed) {
-      console.log(
-        "Import cancelled by user due to unmatched YNAB transactions"
-      );
-      return;
-    }
+  if (toCreate.length === 0 && toMatch.length === 0 && toSchedule.length === 0) {
+    showStatus("No transactions to import or update", "info");
+    return;
   }
 
   try {
@@ -719,49 +652,53 @@ async function importToYNAB() {
     if (importBtn) importBtn.disabled = true;
 
     const api = new YNABApi(ynabConfig.token);
-    const toCreate = [], toMatch = [];
+    let createdCount = 0, updatedCount = 0, scheduledCount = 0;
+    let lastCreatedTxn = null;
 
-    // Process transactions to import
-    for (const item of transactionsToImport) {
-      const { bank: bankTxn, suggestions } = item;
-      const txnIndex = currentTransactions.findIndex(t =>
-        t.date === bankTxn.date && t.description === bankTxn.description && t.amountValue === bankTxn.amountValue
-      );
-
-      const dropdown = [...document.querySelectorAll(".suggestion-dropdown")].find(d => d.dataset.txnIndex === String(txnIndex));
-      const selectedValue = dropdown?.value;
-
-      if (suggestions.length === 0 || selectedValue === "__CREATE_NEW__") {
-        toCreate.push(bankTxn);
-      } else if (selectedValue) {
-        const selectedYnab = suggestions.find(y => y.id === selectedValue);
-        if (selectedYnab) toMatch.push({ bank: bankTxn, ynab: selectedYnab });
-      }
-    }
-
-    let createdCount = 0, updatedCount = 0;
-
-    // Create new transactions
+    // Create new cleared transactions (with watermark on last one)
     if (toCreate.length > 0) {
-      const ynabTxns = toCreate.map(txn => bankAdapter.toYNABTransaction(txn, ynabConfig.accountId));
+      const ynabTxns = toCreate.map((txn, idx) => {
+        const ynabTxn = bankAdapter.toYNABTransaction(txn, ynabConfig.accountId);
+        // Add watermark to the last non-processing transaction
+        if (idx === toCreate.length - 1) {
+          ynabTxn.memo = Watermark.createMemo(txn, ynabTxn.memo);
+          lastCreatedTxn = txn;
+        }
+        return ynabTxn;
+      });
       const result = await api.createTransactions(ynabConfig.budgetId, ynabTxns);
-      createdCount = result.transactions.length;
+      createdCount = result.transactions?.length || toCreate.length;
     }
 
-    // Update matched transactions
-    const allToUpdate = [...toMatch, ...transactionsToUpdate];
-    for (const { bank, ynab } of allToUpdate) {
+    // Create scheduled transactions for processing items (no watermark)
+    for (const txn of toSchedule) {
+      const scheduledTxn = bankAdapter.toScheduledTransaction(txn, ynabConfig.accountId);
+      await api.createScheduledTransaction(ynabConfig.budgetId, scheduledTxn);
+      scheduledCount++;
+    }
+
+    // Update matched transactions to cleared
+    for (const { bank, ynab } of toMatch) {
       const updates = { cleared: 'cleared' };
-      if (!ynab.transfer_account_id) updates.date = bankAdapter.parseDate(bank.date);
+      if (!ynab.transfer_account_id) {
+        updates.date = bankAdapter.parseDate(bank.date);
+      }
+      // Add watermark if this is the last transaction and we didn't create any
+      if (toCreate.length === 0 && bank === toMatch[toMatch.length - 1].bank) {
+        updates.memo = Watermark.createMemo(bank, ynab.memo);
+      }
       await api.updateTransaction(ynabConfig.budgetId, ynab.id, updates);
       updatedCount++;
     }
 
     const messages = [];
     if (createdCount > 0) messages.push(`${createdCount} created`);
-    if (updatedCount > 0) messages.push(`${updatedCount} updated`);
+    if (updatedCount > 0) messages.push(`${updatedCount} cleared`);
+    if (scheduledCount > 0) messages.push(`${scheduledCount} scheduled`);
     showStatus(`✓ ${messages.join(", ")}`, "success");
 
+    // Reset skipped transactions and re-analyze
+    skippedTransactions.clear();
     await analyzeTransactions();
   } catch (error) {
     showStatus(`Import Error: ${error.message}`, "error");
@@ -801,73 +738,31 @@ async function analyzeTransactions() {
   }
 }
 
-// Display transactions with YNAB import preview
+// Display transactions with YNAB two-column preview
 function displayTransactionsWithYnabPreview(analysisResult) {
   if (!resultsDiv) {
     throw new Error("Results div not found in displayTransactionsWithYnabPreview");
   }
 
-  const { toImport, toUpdate, pending, matched, unmatchedYnab, failedTransactions } =
-    analysisResult;
+  const { toImport, toUpdate, pending, matched, unmatchedYnab } = analysisResult;
 
   if (currentTransactions.length === 0) {
-    resultsDiv.innerHTML =
-      '<div class="text-center py-5 text-muted">No transactions found</div>';
+    resultsDiv.innerHTML = '<div class="text-center py-5 text-muted">No transactions found</div>';
     return;
   }
 
   // Create maps for quick lookup
-  const toImportMap = new Map(
-    toImport.map((item) => [JSON.stringify(item.bank), item.suggestions])
-  );
-  const toUpdateMap = new Map(
-    toUpdate.map((item) => [JSON.stringify(item.bank), item.ynab])
-  );
-  const pendingMap = new Map(
-    pending.map((item) => [JSON.stringify(item.bank), item.ynab])
-  );
-  const matchedMap = new Map(
-    matched.map((item) => [JSON.stringify(item.bank), item.ynab])
-  );
+  const toImportMap = new Map(toImport.map(item => [JSON.stringify(item.bank), item.suggestions]));
+  const toUpdateMap = new Map(toUpdate.map(item => [JSON.stringify(item.bank), item.ynab]));
+  const pendingMap = new Map(pending.map(item => [JSON.stringify(item.bank), item.ynab]));
+  const matchedMap = new Map(matched.map(item => [JSON.stringify(item.bank), item.ynab]));
 
-  // Count how many toImport transactions have suggestions (pending matches)
-  const pendingCount = toImport.filter(
-    (item) => item.suggestions && item.suggestions.length > 0
-  ).length;
-  const newCount = toImport.length - pendingCount;
+  // Initialize matches for canvas
+  const initialMatches = [];
 
-  let html = "";
-
-  // Add error for failed transactions
-  if (failedTransactions && failedTransactions.length > 0) {
-    html += window.html.errorBox(failedTransactions);
-  }
-
-  // Add summary with import button
-  const totalActions = toImport.length + toUpdate.length;
-
-  // Build summary parts
-  const summaryParts = [];
-  if (pendingCount > 0)
-    summaryParts.push(
-      `<strong class="font-semibold">${pendingCount}</strong> pending match${pendingCount !== 1 ? 'es' : ''}`
-    );
-  if (newCount > 0)
-    summaryParts.push(`<strong class="font-semibold">${newCount}</strong> new`);
-  if (toUpdate.length > 0)
-    summaryParts.push(
-      `<strong class="font-semibold">${toUpdate.length}</strong> to clear`
-    );
-
-  html += window.html.importSummary(totalActions, summaryParts, matched.length);
-
-  // Show unmatched YNAB transactions only when Import button is disabled (no Fidelity transactions to process)
-  if (totalActions === 0 && unmatchedYnab && unmatchedYnab.length > 0) {
-    html += window.html.warningBox(unmatchedYnab);
-  }
-
-  // Group transactions by date
-  const transactionsByDate = new Map();
+  // Build Fidelity column HTML
+  let fidelityHtml = '';
+  const clearedTxns = [];
 
   currentTransactions.forEach((txn, index) => {
     const txnKey = JSON.stringify(txn);
@@ -876,171 +771,194 @@ function displayTransactionsWithYnabPreview(analysisResult) {
     const pendingYnab = pendingMap.get(txnKey);
     const matchedYnab = matchedMap.get(txnKey);
 
-    // Skip rendering CLEARED transactions if hideCleared is checked
-    if (matchedYnab && hideClearedCheckbox && hideClearedCheckbox.checked) {
-      return; // Skip this transaction
-    }
+    const isSkipped = skippedTransactions.has(index);
+    let matchState = '';
 
-    const date = txn.date || 'N/A';
-    if (!transactionsByDate.has(date)) {
-      transactionsByDate.set(date, []);
-    }
-
-    transactionsByDate.get(date).push({
-      txn,
-      index,
-      suggestions,
-      toUpdateYnab,
-      pendingYnab,
-      matchedYnab
-    });
-  });
-
-  // Render each date group
-  transactionsByDate.forEach((transactions, date) => {
-    let groupHtml = '';
-
-    transactions.forEach(({ txn, index, suggestions, toUpdateYnab, pendingYnab, matchedYnab }) => {
-      const amountClass = txn.type === "credit" ? "credit" : "debit";
-
-      let badgeClass,
-        badgeText,
-        matchInfo = "",
-        dropdownId = "",
-        suggestionsList = [];
-
-      if (suggestions !== undefined) {
-        // This is a NEW transaction (or has match suggestions)
-        if (suggestions.length > 0) {
-          badgeClass = "badge-new";
-          badgeText = "MATCH AVAILABLE";
-          dropdownId = `dropdown-${index}`;
-          suggestionsList = suggestions;
-        } else {
-          badgeClass = "badge-new";
-          badgeText = "NEW";
-        }
-      } else if (pendingYnab) {
-        badgeClass = "badge-pending";
-        badgeText = "PENDING";
-        matchInfo = window.html.matchInfo(pendingYnab);
-      } else if (toUpdateYnab) {
-        badgeClass = "badge-clear";
-        badgeText = "MATCHED";
-        matchInfo = window.html.matchInfo(toUpdateYnab);
-      } else if (matchedYnab) {
-        badgeClass = "badge-cleared";
-        badgeText = "CLEARED";
-        matchInfo = window.html.matchInfo(matchedYnab);
+    if (matchedYnab) {
+      matchState = 'matched';
+      initialMatches.push({ fidelityIndex: index, ynabId: matchedYnab.id, type: 'match' });
+      // Collect for collapsed section if hiding cleared
+      if (hideClearedCheckbox && hideClearedCheckbox.checked) {
+        clearedTxns.push({ txn, index, ynab: matchedYnab });
+        return;
       }
+    } else if (toUpdateYnab) {
+      matchState = 'matched';
+      initialMatches.push({ fidelityIndex: index, ynabId: toUpdateYnab.id, type: 'match' });
+    } else if (pendingYnab) {
+      matchState = 'matched';
+      initialMatches.push({ fidelityIndex: index, ynabId: pendingYnab.id, type: 'match' });
+    } else if (suggestions !== undefined) {
+      matchState = 'new';
+      // Auto-match if only one suggestion
+      if (suggestions.length === 1) {
+        initialMatches.push({ fidelityIndex: index, ynabId: suggestions[0].id, type: 'match' });
+      } else if (suggestions.length === 0) {
+        initialMatches.push({ fidelityIndex: index, ynabId: `__CREATE_${index}__`, type: 'create' });
+      }
+    }
 
-      groupHtml += window.html.transaction(
-        txn,
-        amountClass,
-        badgeClass,
-        badgeText,
-        matchInfo || index,
-        dropdownId,
-        suggestionsList
-      );
-    });
-
-    html += window.html.dateGroup(date, groupHtml);
+    fidelityHtml += html.fidelityItem(txn, index, isSkipped, matchState);
   });
 
-  resultsDiv.innerHTML = html;
+  // Add collapsed cleared section at top if any
+  if (clearedTxns.length > 0) {
+    fidelityHtml = html.clearedSection(clearedTxns) + fidelityHtml;
+  }
 
-  // Attach custom dropdown event listeners
-  attachCustomDropdownListeners();
+  // Build YNAB column HTML - in same order as Fidelity column for line alignment
+  let ynabHtml = '';
+  const clearedYnabForSection = [];
 
-  // Re-attach import button event listener if it exists
+  // Iterate in same order as Fidelity column
+  currentTransactions.forEach((txn, index) => {
+    const txnKey = JSON.stringify(txn);
+    const suggestions = toImportMap.get(txnKey);
+    const toUpdateYnab = toUpdateMap.get(txnKey);
+    const pendingYnab = pendingMap.get(txnKey);
+    const matchedYnab = matchedMap.get(txnKey);
+
+    const isSkipped = skippedTransactions.has(index);
+
+    if (matchedYnab) {
+      // Already cleared - collect for collapsed section if hiding
+      if (hideClearedCheckbox && hideClearedCheckbox.checked) {
+        clearedYnabForSection.push({ ynab: matchedYnab, fidelityIndex: index });
+        return;
+      }
+      ynabHtml += html.ynabItem(matchedYnab, 'matched', index);
+    } else if (toUpdateYnab) {
+      ynabHtml += html.ynabItem(toUpdateYnab, 'matched', index);
+    } else if (pendingYnab) {
+      ynabHtml += html.ynabItem(pendingYnab, 'matched', index);
+    } else if (suggestions !== undefined) {
+      // New transaction - show "Create New" target
+      const formattedPayee = bankAdapter.formatPayeeName(txn.description);
+      ynabHtml += html.createNewTarget(index, isSkipped ? null : txn, formattedPayee);
+    }
+  });
+
+  // Add cleared section at top if hiding cleared
+  if (clearedYnabForSection.length > 0) {
+    ynabHtml = html.ynabClearedSection(clearedYnabForSection) + ynabHtml;
+  }
+
+  // Render unmatched YNAB transactions at the bottom
+  unmatchedYnab.forEach(ynab => {
+    ynabHtml += html.ynabItem(ynab, 'available', null);
+  });
+
+  // Count stats for summary
+  const toCreate = toImport.filter(item => item.suggestions.length === 0).length;
+  const toMatch = toImport.filter(item => item.suggestions.length > 0).length + toUpdate.length;
+  const toSkip = skippedTransactions.size;
+  const summaryHtml = html.matchSummary({ toCreate, toMatch, toSkip, beforeWatermark: 0 });
+
+  // Render two-column layout
+  resultsDiv.innerHTML = html.twoColumnContainer(fidelityHtml, ynabHtml, summaryHtml);
+
+  // Initialize match canvas
+  if (matchCanvas) matchCanvas.destroy();
+  matchCanvas = new MatchCanvas({
+    onMatchChanged: (change) => {
+      // Handle match changes from drag/drop
+    }
+  });
+  matchCanvas.init();
+  matchCanvas.setMatches(initialMatches);
+
+  // Setup synchronized scrolling
+  setupScrollSync();
+
+  // Attach skip button handlers
+  attachSkipButtonHandlers();
+
+  // Attach import button handler
   const importBtn = document.getElementById("ynabImportBtn");
   if (importBtn) {
     importBtn.addEventListener("click", importToYNAB);
   }
 }
 
-// Handle custom dropdown interactions using event delegation
-let dropdownListenersAttached = false;
+// Handle skip button clicks
+function attachSkipButtonHandlers() {
+  resultsDiv.addEventListener('click', (e) => {
+    const skipBtn = e.target.closest('.skip-btn');
+    if (!skipBtn) return;
 
-function attachCustomDropdownListeners() {
-  // Only attach listeners once using event delegation
-  if (dropdownListenersAttached) return;
-  dropdownListenersAttached = true;
+    const index = parseInt(skipBtn.dataset.index, 10);
+    if (isNaN(index)) return;
 
-  // Use event delegation on resultsDiv
-  if (!resultsDiv) throw new Error("resultsDiv not found when attaching dropdown listeners");
-
-  // Toggle dropdown on button click
-  resultsDiv.addEventListener("click", (e) => {
-    const btn = e.target.closest(".custom-dropdown-btn");
-    if (btn) {
-      e.stopPropagation();
-      const dropdownId = btn.getAttribute("data-dropdown-id");
-      const dropdown = document.getElementById(dropdownId);
-
-      if (!dropdown) return;
-
-      // Close all other dropdowns
-      document.querySelectorAll(".custom-dropdown-menu").forEach((menu) => {
-        if (menu.id !== dropdownId) {
-          menu.classList.add("hidden");
-        }
-      });
-
-      // Toggle this dropdown
-      const isHidden = dropdown.classList.contains("hidden");
-      if (isHidden) {
-        // Show dropdown temporarily to measure it
-        dropdown.style.visibility = "hidden";
-        dropdown.classList.remove("hidden");
-
-        // Position the dropdown below the button (convert pixels to rems)
-        const rect = btn.getBoundingClientRect();
-        const dropdownWidth = dropdown.offsetWidth;
-
-        dropdown.style.top = `${(rect.bottom + 2) / 16}rem`;
-        dropdown.style.left = `${(rect.right - dropdownWidth) / 16}rem`;
-        dropdown.style.visibility = "visible";
-      } else {
-        dropdown.classList.add("hidden");
-      }
-      return;
+    if (skippedTransactions.has(index)) {
+      skippedTransactions.delete(index);
+    } else {
+      skippedTransactions.add(index);
     }
 
-    // Handle option selection
-    const option = e.target.closest(".dropdown-option");
-    if (option) {
-      const value = option.getAttribute("data-value");
-      const txnIndex = option.getAttribute("data-txn-index");
-      const container = option.closest(".relative");
-      const btn = container?.querySelector(".custom-dropdown-btn");
-      const dropdown = option.closest(".custom-dropdown-menu");
-      const hiddenInput = container?.querySelector(".suggestion-dropdown");
-
-      if (!btn || !dropdown || !hiddenInput) return;
-
-      // Update hidden input value
-      hiddenInput.value = value;
-
-      // Update badge appearance to show selection was made
-      if (value === "__CREATE_NEW__") {
-        btn.innerHTML = "NEW";
-        btn.className = "bg-green-600 text-white pointer-events-none px-2 py-0.5 text-xs rounded-full mt-1";
-      } else {
-        btn.innerHTML = "MATCHED";
-        btn.className = "bg-blue-600 text-white pointer-events-none px-2 py-0.5 text-xs rounded-full mt-1";
-      }
-
-      // Close dropdown
-      dropdown.classList.add("hidden");
-    }
-  });
-
-  // Close dropdowns when clicking outside
-  document.addEventListener("click", () => {
-    document.querySelectorAll(".custom-dropdown-menu").forEach((menu) => {
-      menu.classList.add("hidden");
+    // Re-render to update UI
+    displayTransactionsWithYnabPreview({
+      toImport: transactionsToImport,
+      toUpdate: transactionsToUpdate,
+      pending: transactionsPending,
+      matched: transactionsMatched,
+      unmatchedYnab: unmatchedYnab,
+      failedTransactions: []
     });
   });
 }
+
+// Synchronized scrolling between columns
+let scrollSyncActive = false;
+
+function setupScrollSync() {
+  const fidelityCol = document.getElementById('fidelityColumn');
+  const ynabCol = document.getElementById('ynabColumn');
+
+  if (!fidelityCol || !ynabCol) return;
+
+  let lastScrollTop = { fidelity: 0, ynab: 0 };
+  let isScrolling = false;
+
+  const syncScroll = (source, target, sourceKey, targetKey) => {
+    if (isScrolling) return;
+    isScrolling = true;
+
+    const delta = source.scrollTop - lastScrollTop[sourceKey];
+    const targetMaxScroll = target.scrollHeight - target.clientHeight;
+    const sourceMaxScroll = source.scrollHeight - source.clientHeight;
+
+    // Calculate new target scroll position
+    let newTargetScroll = target.scrollTop + delta;
+
+    // Clamp to valid range
+    newTargetScroll = Math.max(0, Math.min(newTargetScroll, targetMaxScroll));
+
+    // Only sync if target isn't already at its limit in the direction of scroll
+    const atBottom = target.scrollTop >= targetMaxScroll - 1;
+    const atTop = target.scrollTop <= 1;
+
+    if (delta > 0 && !atBottom) {
+      target.scrollTop = newTargetScroll;
+    } else if (delta < 0 && !atTop) {
+      target.scrollTop = newTargetScroll;
+    }
+
+    lastScrollTop[sourceKey] = source.scrollTop;
+    lastScrollTop[targetKey] = target.scrollTop;
+
+    requestAnimationFrame(() => {
+      isScrolling = false;
+    });
+  };
+
+  fidelityCol.addEventListener('scroll', () => {
+    syncScroll(fidelityCol, ynabCol, 'fidelity', 'ynab');
+  });
+
+  ynabCol.addEventListener('scroll', () => {
+    syncScroll(ynabCol, fidelityCol, 'ynab', 'fidelity');
+  });
+
+  scrollSyncActive = true;
+}
+
