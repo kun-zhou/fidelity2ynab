@@ -14,10 +14,6 @@ let ynabConfig = null;
 // Two-column UI state
 let skippedTransactions = new Set();
 let matchCanvas = null;
-let beforeWatermarkTxns = [];
-let afterWatermarkTxns = [];
-let watermarkInfo = null;
-let allYnabTxns = [];
 
 // Bank adapter (Fidelity)
 const bankAdapter = FidelityAdapter;
@@ -125,6 +121,17 @@ document.addEventListener("DOMContentLoaded", () => {
   saveYnabConfigBtn.addEventListener("click", saveYnabConfig);
   cancelYnabConfigBtn.addEventListener("click", closeYnabModal);
   alertOkBtn.addEventListener("click", closeAlertModal);
+
+  // Close modals when clicking backdrop
+  ynabModal.addEventListener("click", (e) => {
+    if (e.target === ynabModal) closeYnabModal();
+  });
+  alertModal.addEventListener("click", (e) => {
+    if (e.target === alertModal) closeAlertModal();
+  });
+  confirmModal.addEventListener("click", (e) => {
+    if (e.target === confirmModal) confirmModal.classList.add("hidden");
+  });
 
   // YNAB token input - load budgets when token is entered
   ynabTokenInput.addEventListener(
@@ -250,13 +257,10 @@ function displayTransactions(transactions) {
 
   if (transactions.length === 0) {
     resultsDiv.innerHTML = `
-      <div class="text-center py-5">
-        <p class="text-muted mb-3">Click "Scrape Transactions" to extract data from the current page</p>
-        <button id="scrapeBtn" class="btn btn-primary">Scrape Transactions</button>
+      <div class="text-center py-5 text-gray-500">
+        No transactions found. Try adjusting the date filter on the Fidelity page.
       </div>
     `;
-    // Re-attach event listener
-    document.getElementById("scrapeBtn").addEventListener("click", scrapeTransactions);
     return;
   }
 
@@ -301,7 +305,7 @@ function displayTransactions(transactions) {
               }
             </div>
             <div class="flex flex-col items-end ml-4">
-              <span class="text-sm ${amountClass === 'text-green-600' ? 'text-green-600' : 'text-gray-900'}">${txn.amount || "N/A"}</span>
+              <span class="text-sm ${amountClass}">${txn.amount || "N/A"}</span>
             </div>
           </div>
         </div>
@@ -366,7 +370,7 @@ function debounce(func, wait) {
 
 // Load user settings from storage
 async function loadSettings() {
-  const settings = await getStorageValues(["skipCoreFunds", "hideCleared"]);
+  const settings = await getStorageValues(["skipCoreFunds"]);
 
   // Default to true if not set
   if (skipCoreFundsCheckbox) {
@@ -402,21 +406,23 @@ function updateYnabStatus() {
 
 // Open YNAB configuration modal
 function openYnabConfig() {
-  // Pre-fill if config exists
-  if (ynabConfig) {
-    ynabTokenInput.value = ynabConfig.token || "";
-    if (ynabConfig.token) {
-      loadYnabBudgets(ynabConfig.token).then(() => {
-        if (ynabConfig.budgetId) {
-          ynabBudgetSelect.value = ynabConfig.budgetId;
-          loadYnabAccounts(ynabConfig.token, ynabConfig.budgetId).then(() => {
-            if (ynabConfig.accountId) {
-              ynabAccountSelect.value = ynabConfig.accountId;
-            }
-          });
-        }
-      });
-    }
+  // Pre-fill if config exists, but don't show token (security)
+  if (ynabConfig && ynabConfig.token) {
+    ynabTokenInput.value = "";
+    ynabTokenInput.placeholder = "Token saved • enter new to replace";
+    loadYnabBudgets(ynabConfig.token).then(() => {
+      if (ynabConfig.budgetId) {
+        ynabBudgetSelect.value = ynabConfig.budgetId;
+        loadYnabAccounts(ynabConfig.token, ynabConfig.budgetId).then(() => {
+          if (ynabConfig.accountId) {
+            ynabAccountSelect.value = ynabConfig.accountId;
+          }
+        });
+      }
+    });
+  } else {
+    ynabTokenInput.value = "";
+    ynabTokenInput.placeholder = "Enter your YNAB PAT";
   }
   ynabModal.classList.remove("hidden");
 }
@@ -521,9 +527,12 @@ async function loadYnabAccounts(token, budgetId) {
 
 // Save YNAB configuration
 async function saveYnabConfig() {
-  const token = ynabTokenInput.value.trim();
+  const newToken = ynabTokenInput.value.trim();
   const budgetId = ynabBudgetSelect.value;
   const accountId = ynabAccountSelect.value;
+
+  // Use new token if provided, otherwise keep existing
+  const token = newToken || (ynabConfig && ynabConfig.token);
 
   if (!token || !budgetId || !accountId) {
     showStatus("Please fill in all YNAB fields", "error");
@@ -620,7 +629,6 @@ async function importToYNAB() {
 
     const api = new YNABApi(ynabConfig.token);
     let createdCount = 0, updatedCount = 0, scheduledCount = 0;
-    let lastCreatedTxn = null;
 
     // Create new cleared transactions (with watermark on last one)
     if (toCreate.length > 0) {
@@ -629,7 +637,6 @@ async function importToYNAB() {
         // Add watermark to the last non-processing transaction
         if (idx === toCreate.length - 1) {
           ynabTxn.memo = Watermark.createMemo(txn, ynabTxn.memo);
-          lastCreatedTxn = txn;
         }
         return ynabTxn;
       });
@@ -883,9 +890,6 @@ function setupScrollSync() {
   const onWheel = (e) => {
     e.preventDefault();
     const delta = e.deltaY;
-
-    const fidelityMax = fidelityCol.scrollHeight - fidelityCol.clientHeight;
-    const ynabMax = ynabCol.scrollHeight - ynabCol.clientHeight;
 
     if (delta > 0) {
       // Scrolling DOWN - both scroll together
