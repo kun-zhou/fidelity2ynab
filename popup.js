@@ -868,6 +868,7 @@ function attachSkipButtonHandlers() {
 
 // Synchronized scrolling between columns
 let scrollSyncActive = false;
+let scrollSyncCleanup = null;
 
 function setupScrollSync() {
   const fidelityCol = document.getElementById('fidelityColumn');
@@ -875,48 +876,39 @@ function setupScrollSync() {
 
   if (!fidelityCol || !ynabCol) return;
 
-  let lastScrollTop = { fidelity: 0, ynab: 0 };
-  let isScrolling = false;
+  // Clean up previous listeners if any
+  if (scrollSyncCleanup) {
+    scrollSyncCleanup();
+  }
 
-  const syncScroll = (source, target, sourceKey, targetKey) => {
-    if (isScrolling) return;
-    isScrolling = true;
+  let isSyncing = false;
 
-    const delta = source.scrollTop - lastScrollTop[sourceKey];
+  const syncScroll = (source, target) => {
+    if (isSyncing) return;
+    isSyncing = true;
+
     const targetMaxScroll = target.scrollHeight - target.clientHeight;
-    const sourceMaxScroll = source.scrollHeight - source.clientHeight;
 
-    // Calculate new target scroll position
-    let newTargetScroll = target.scrollTop + delta;
-
-    // Clamp to valid range
-    newTargetScroll = Math.max(0, Math.min(newTargetScroll, targetMaxScroll));
-
-    // Only sync if target isn't already at its limit in the direction of scroll
-    const atBottom = target.scrollTop >= targetMaxScroll - 1;
-    const atTop = target.scrollTop <= 1;
-
-    if (delta > 0 && !atBottom) {
-      target.scrollTop = newTargetScroll;
-    } else if (delta < 0 && !atTop) {
-      target.scrollTop = newTargetScroll;
-    }
-
-    lastScrollTop[sourceKey] = source.scrollTop;
-    lastScrollTop[targetKey] = target.scrollTop;
+    // Simply apply the same scroll position, clamped to target's range
+    const newScroll = Math.max(0, Math.min(source.scrollTop, targetMaxScroll));
+    target.scrollTop = newScroll;
 
     requestAnimationFrame(() => {
-      isScrolling = false;
+      isSyncing = false;
     });
   };
 
-  fidelityCol.addEventListener('scroll', () => {
-    syncScroll(fidelityCol, ynabCol, 'fidelity', 'ynab');
-  });
+  const onFidelityScroll = () => syncScroll(fidelityCol, ynabCol);
+  const onYnabScroll = () => syncScroll(ynabCol, fidelityCol);
 
-  ynabCol.addEventListener('scroll', () => {
-    syncScroll(ynabCol, fidelityCol, 'ynab', 'fidelity');
-  });
+  fidelityCol.addEventListener('scroll', onFidelityScroll);
+  ynabCol.addEventListener('scroll', onYnabScroll);
+
+  // Store cleanup function
+  scrollSyncCleanup = () => {
+    fidelityCol.removeEventListener('scroll', onFidelityScroll);
+    ynabCol.removeEventListener('scroll', onYnabScroll);
+  };
 
   scrollSyncActive = true;
 }
