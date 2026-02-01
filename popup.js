@@ -868,8 +868,12 @@ function displayTransactionsWithYnabPreview(analysisResult) {
   attachSkipButtonHandlers();
 }
 
-// Handle skip button clicks
+// Handle skip button clicks (only attach once)
+let skipHandlerAttached = false;
 function attachSkipButtonHandlers() {
+  if (skipHandlerAttached) return;
+  skipHandlerAttached = true;
+
   resultsDiv.addEventListener('click', (e) => {
     const skipBtn = e.target.closest('.skip-btn');
     if (!skipBtn) return;
