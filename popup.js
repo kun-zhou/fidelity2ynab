@@ -844,13 +844,9 @@ function displayTransactionsWithYnabPreview(analysisResult) {
   // Update summary stats in action bar
   summaryStats.innerHTML = html.matchSummaryText({ toCreate, toMatch, toSkip, beforeWatermark: 0 });
 
-  // Show/hide import button based on actions available (use invisible to reserve space)
+  // Enable/disable import button based on actions available
   const hasActions = toCreate > 0 || toMatch > 0;
-  if (hasActions) {
-    ynabImportBtn.classList.remove("invisible");
-  } else {
-    ynabImportBtn.classList.add("invisible");
-  }
+  ynabImportBtn.disabled = !hasActions;
 
   // Render two-column layout
   resultsDiv.innerHTML = html.twoColumnContainer(fidelityHtml, ynabHtml);
